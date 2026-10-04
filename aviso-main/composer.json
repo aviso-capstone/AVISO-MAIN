@@ -18,7 +18,7 @@
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.0",
         "tightenco/ziggy": "^2.0",
-        "yajra/laravel -address": "^12.2"
+        "yajra/laravel-address": "^12.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

@@ -1,0 +1,25 @@
+# Local dry run of the production image before deploying to App Platform.
+#   docker compose up --build      → http://localhost:8080
+# Uses aviso-main/.env (Supabase DB + storage keys); nothing is baked into the image.
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN}
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY}
+        VITE_REVERB_HOST: localhost
+        VITE_REVERB_PORT: "8080"
+        VITE_REVERB_SCHEME: http
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8080
+      LOG_CHANNEL: stderr
+      # Laravel → Reverb inside the container (overrides the .env values).
+      REVERB_HOST: 127.0.0.1
+      REVERB_PORT: "8081"
+      REVERB_SCHEME: http
