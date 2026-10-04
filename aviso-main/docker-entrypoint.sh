@@ -19,6 +19,7 @@ php artisan event:cache  || echo "WARNING: event:cache failed"
 chown -R www-data:www-data storage bootstrap/cache
 
 echo "==> Starting nginx + php-fpm..."
+rm -f /tmp/aviso-ready /var/run/supervisor.sock
 /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
 SUPERVISOR_PID=$!
 
@@ -39,7 +40,8 @@ else
 fi
 
 echo "==> Starting Reverb and the queue worker..."
-supervisorctl -c /etc/supervisor/conf.d/supervisord.conf start reverb queue-worker
+# They poll for this file (see docker/supervisord.conf).
+touch /tmp/aviso-ready
 
 echo "==> AVISO is up."
 wait $SUPERVISOR_PID
