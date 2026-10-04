@@ -27,3 +27,8 @@ package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+.pio
+# Local dev shortcut (npm start = serve + reverb + queue); kept out of the repo so
+# App Platform does not detect the repo root as a Node.js app.
+/package.json
