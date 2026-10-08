@@ -22,6 +22,8 @@ class StoreHazardLogRequest extends FormRequest
             'confidence'  => ['required', 'numeric', 'between:0,100'],
             'distance'    => ['nullable', 'numeric', 'min:0'],
             'detected_at' => ['nullable', 'date'],
+            // Server id of the ride it was seen on; only used if that trip belongs to this rider.
+            'trip_id'     => ['nullable', 'integer'],
         ];
     }
 }
