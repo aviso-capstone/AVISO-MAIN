@@ -177,7 +177,8 @@ void setup() {
   prefs.end();
 
   esp_task_wdt_config_t wdt = { .timeout_ms = WDT_TIMEOUT_SEC * 1000, .idle_core_mask = 0, .trigger_panic = true };
-  if (esp_task_wdt_init(&wdt) != ESP_OK) esp_task_wdt_reconfigure(&wdt);
+  // The Arduino core usually starts the watchdog already: adjust it, else start it.
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
 
   Buzzer::begin();
   BlackBox::begin();
@@ -191,7 +192,6 @@ void setup() {
 }
 
 void loop() {
-  // All work happens in the two tasks above.
-  esp_task_wdt_reset();
+  // All work happens in the two tasks above (each is watched by the watchdog).
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

@@ -109,6 +109,12 @@ namespace {
     rebuildWifiMulti();
   }
 
+  void forgetNetworks() {
+    for (int i = 0; i < MAX_SAVED_NETWORKS; i++) { savedSsid[i] = ""; savedPass[i] = ""; }
+    saveNetworks();
+    rebuildWifiMulti();
+  }
+
   // ---------------------------------------------------------- server calls
   // POSTs JSON to the AVISO server. Returns the HTTP status (<= 0 on failure).
   int postJson(const String& path, const String& body, bool withDeviceAuth, String* response = nullptr) {
@@ -333,7 +339,10 @@ namespace {
       "<label>AVISO server URL</label><input name=srv placeholder='http://192.168.43.50:8000' value='" + htmlEscape(serverUrl) + "'>"
       "<label>Pairing code (from the AVISO app)</label><input name=code inputmode=numeric maxlength=6>"
       "<button>Save</button></form>"
-      "<p>After saving, turn on that hotspot. The unit beeps once when paired.</p></body></html>";
+      "<p>After saving, turn on that hotspot. The unit beeps once when paired.</p>"
+      "<form method=post action=/forget onsubmit=\"return confirm('Forget all saved hotspots?')\">"
+      "<button style='background:#6B7280'>Forget saved hotspots</button></form>"
+      "<p>Keeps the pairing and the server URL. Add your hotspot again above.</p></body></html>";
     http.send(200, "text/html", page);
   }
 
@@ -343,6 +352,13 @@ namespace {
     String srv = http.arg("srv");
     String code = http.arg("code");
     ssid.trim(); srv.trim(); code.trim();
+
+    if (srv.length() && !srv.startsWith("http://") && !srv.startsWith("https://")) {
+      setupMessage = "Server URL must start with http:// or https:// - nothing was saved.";
+      http.sendHeader("Location", "/");
+      http.send(303);
+      return;
+    }
 
     if (ssid.length()) rememberNetwork(ssid, pass);
     if (srv.length()) {
@@ -358,6 +374,13 @@ namespace {
     http.sendHeader("Location", "/");
     http.send(303);
     lastConnectAttempt = 0;   // try the new hotspot right away
+  }
+
+  void handleForget() {
+    forgetNetworks();
+    setupMessage = "Saved hotspots cleared. Add your phone hotspot above.";
+    http.sendHeader("Location", "/");
+    http.send(303);
   }
 
   bool safeFileName(const String& n) {
@@ -443,6 +466,7 @@ void begin() {
 
   http.on("/", HTTP_GET, handleSetupPage);
   http.on("/save", HTTP_POST, handleSave);
+  http.on("/forget", HTTP_POST, handleForget);
   http.onNotFound(handleNotFound);
   http.begin();
 

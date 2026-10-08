@@ -1,0 +1,8 @@
+# AVISO: one layout for every sketch (4 MB ESP32), so switching sketches keeps the data.
+# app 1.5 MB (room for Wi-Fi + WebSocket + HTTPS in aviso-iot), LittleFS ~2.4 MB (~5 threshold sessions).
+# Name,   Type, SubType,  Offset,   Size,
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x180000,
+spiffs,   data, spiffs,   0x190000, 0x260000,
+coredump, data, coredump, 0x3F0000, 0x10000,
