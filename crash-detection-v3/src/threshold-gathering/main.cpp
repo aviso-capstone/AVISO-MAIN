@@ -1,6 +1,6 @@
 // ============================================================
 // AVISO — Crash Detection Threshold Data Gathering
-// Field-Hardened v5 (No Button, Buzzer-Calibrated, 100 Hz)
+// Field-Hardened v6 (No Button, Buzzer-Calibrated, 100 Hz)
 // ------------------------------------------------------------
 // PURPOSE:
 //   Collects labeled sensor data for one of four motion
@@ -26,7 +26,12 @@
 // FILES ON THE UNIT (LittleFS):
 //   /threshold_log_v5.csv       every sample of every session
 //   /threshold_sessions_v5.csv  one summary row per session
-//                               (peaks, data quality, reset reason)
+//                               (peaks + when they happened, data
+//                               quality, reset reason; a session cut
+//                               off by power loss gets an
+//                               INTERRUPTED row on the next boot)
+//   (File names stay _v5 so retrieval/cleanup work unchanged; the
+//   summary's "version" column says which sketch wrote each row.)
 //   Retrieve both with the retrieval sketch, then clear them with
 //   the storage-cleanup sketch.
 //
@@ -34,9 +39,13 @@
 //   1. Set sessionMode below to the category being tested.
 //   2. Upload with laptop attached, confirm the beeps:
 //      1 beep = normal, 2 = brake, 3 = bump, 4 = crash.
-//   3. Put the bike UPRIGHT and STILL. After the category beeps,
+//   3. Power on: 15 s of short ticks (one every 5 s) to get the
+//      bike ready — unplugging during the ticks skips the session.
+//      Put the bike UPRIGHT and STILL. After the category beeps,
 //      the unit captures the upright position (0.5 s), then plays
 //      the low "starting" tone. The 30 s window runs from there.
+//      If the unit is moving, short chirps repeat until it is
+//      still (gives up after ~10 s and flags upright_still=0).
 //   4. Unplug laptop, power the unit independently, run the test.
 //   5. Three descending tones = session complete, safe to unplug.
 //   6. Power-cycle for the next attempt (attempt numbers persist
@@ -46,7 +55,8 @@
 //   pio run -e threshold-gathering -t upload
 //   Board, core 3.x, libraries and the shared partition table
 //   (~2.4 MB storage, about 5 sessions before retrieval) are all
-//   set in platformio.ini / partitions.csv.
+//   set in platformio.ini / partitions.csv. The Arduino IDE copy in
+//   crash-detection/threshold-gathering uses the same layout.
 //
 // AUDIO DESIGN NOTE:
 //   2000Hz was confirmed, by direct listening test on this
@@ -56,6 +66,15 @@
 //   700Hz is deliberately kept for the "starting" signal so it
 //   remains unmistakably distinct from every alert tone, not
 //   because it is louder.
+//
+// v6 CHANGES (from v5):
+//   - Power lost mid-session is detected on the next boot and
+//     recorded as an INTERRUPTED summary row (was silent).
+//   - Upright reference only captured while still (gyro check).
+//   - Summary adds when each peak happened (t_peak_*), duration,
+//     effective sample rate and upright_still.
+//   - Attempt counter no longer restarts at 1 after 254.
+//   - 15 s start delay after power-on (ticks), nothing written during it.
 //
 // v5 CHANGES (from v4):
 //   - Storage checked every 100 rows instead of every row: the
@@ -80,7 +99,7 @@
 #include <esp_task_wdt.h>
 #include <esp_system.h>
 
-#define GATHER_VERSION "v5"
+#define GATHER_VERSION "v6"
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);  // I2C address confirmed via scanner on this hardware
 
@@ -103,6 +122,8 @@ const int sessionMode = 0;
 #define CALIBRATION_FLAG_ADDR 0     // 1 byte: 0x55 = valid calibration saved
 #define CALIBRATION_DATA_ADDR 1     // BNO055 offset struct
 #define ATTEMPT_COUNT_ADDR 100      // 4 bytes, one counter per category (0-3)
+#define IN_PROGRESS_ADDR 110        // 1 byte: category + 1 while a session is logging, 0 = none
+#define IN_PROGRESS_ATTEMPT_ADDR 111 // 1 byte: that session's attempt number
 
 // ============================================================
 // SYSTEM TIMING / SAFETY LIMITS
@@ -115,6 +136,11 @@ const int sessionMode = 0;
 #define FLUSH_EVERY_ROWS 100            // flush the open log file once per second
 #define STORAGE_CHECK_EVERY_ROWS 100    // free-space check once per second (not per row)
 #define UPRIGHT_SAMPLES 50              // 0.5 s average = the session's upright reference
+#define UPRIGHT_STILL_DPS 5.0f          // gyro above this during the capture = not still, retry
+#define UPRIGHT_MAX_TRIES 20            // ~10 s of retries, then capture anyway (flagged)
+#define START_DELAY_MS 15000UL          // wait after power-on: time to get the bike upright and still.
+                                        // Nothing is written during it, so unplugging then skips
+                                        // the session cleanly (no attempt number used).
 
 const unsigned long TEST_DURATION_MS = 30000;  // 30-second window per session (see rationale: more
                                                  // repetitions across short, clean sessions yields
@@ -165,9 +191,14 @@ const int ZERO_STREAK_FAILURE_LIMIT = 10;  // consecutive bad reads = likely I2C
 
 // Upright reference (unit vector of gravity at session start)
 float upX = 0, upY = 0, upZ = 1;
+bool uprightStill = true;      // false = captured while moving (tilt values less reliable)
 
-// Session peaks (same quantities as the field firmware)
+// Session peaks (same quantities as the field firmware) and the
+// session time (t_ms, same as the log rows) each one happened at,
+// so analysis can jump straight to the event in the big log.
 float peakLinearG = 0, peakVerticalG = 0, peakHorizontalG = 0, peakGyroDps = 0, maxTiltDeg = 0;
+unsigned long tPeakLinear = 0, tPeakVertical = 0, tPeakHorizontal = 0, tPeakGyro = 0, tMaxTilt = 0;
+unsigned long lastRowMs = 0;   // t_ms of the last good sample = logged duration
 
 // ============================================================
 // BUZZER + LED SIGNAL LIBRARY
@@ -257,7 +288,7 @@ int getAndIncrementAttempt(int mode) {
   int addr = ATTEMPT_COUNT_ADDR + mode;
   byte current = EEPROM.read(addr);
   if (current == 255) current = 0;  // unwritten EEPROM reads as 0xFF
-  byte next = current + 1;
+  byte next = (current >= 254) ? 1 : current + 1;  // never store 255 (would read back as "unwritten")
   EEPROM.write(addr, next);
   EEPROM.commit();
   return next;
@@ -303,42 +334,98 @@ void haltWithFailureSignal(const char* reason) {
 
 // Averages gravity for 0.5 s with the bike upright and still: the
 // reference every tilt value in this session is measured from.
+// If the unit rotates during the 0.5 s it chirps and tries again;
+// after UPRIGHT_MAX_TRIES it keeps the last capture and flags it.
 void captureUprightReference() {
-  float sx = 0, sy = 0, sz = 0;
-  int n = 0;
-  for (int i = 0; i < UPRIGHT_SAMPLES; i++) {
-    imu::Vector<3> grav = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
-    if (norm3(grav.x(), grav.y(), grav.z()) > 8.0f) {
-      sx += grav.x(); sy += grav.y(); sz += grav.z(); n++;
+  for (int attempt = 1; attempt <= UPRIGHT_MAX_TRIES; attempt++) {
+    float sx = 0, sy = 0, sz = 0;
+    int n = 0;
+    bool moved = false;
+    for (int i = 0; i < UPRIGHT_SAMPLES; i++) {
+      imu::Vector<3> grav = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
+      imu::Vector<3> gyr = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+      if (norm3(gyr.x(), gyr.y(), gyr.z()) > UPRIGHT_STILL_DPS) moved = true;
+      if (norm3(grav.x(), grav.y(), grav.z()) > 8.0f) {
+        sx += grav.x(); sy += grav.y(); sz += grav.z(); n++;
+      }
+      delay(SAMPLE_INTERVAL_US / 1000);
     }
-    delay(SAMPLE_INTERVAL_US / 1000);
+    esp_task_wdt_reset();
+    float len = norm3(sx, sy, sz);
+    if (n == 0 || len < 1.0f) haltWithFailureSignal("Could not read gravity for the upright reference.");
+    upX = sx / len; upY = sy / len; upZ = sz / len;
+    uprightStill = !moved;
+    if (uprightStill) return;
+
+    Serial.printf("[INIT] Unit moving during upright capture (try %d/%d) — hold the bike still.\n",
+                  attempt, UPRIGHT_MAX_TRIES);
+    tone(BUZZER_PIN, 1700, 60);
+    digitalWrite(LED_PIN, HIGH); delay(60); digitalWrite(LED_PIN, LOW);
   }
-  float len = norm3(sx, sy, sz);
-  if (n == 0 || len < 1.0f) haltWithFailureSignal("Could not read gravity for the upright reference.");
-  upX = sx / len; upY = sy / len; upZ = sz / len;
+  Serial.println("[WARNING] Never still — upright captured while moving (upright_still=0).");
 }
 
 // ============================================================
 // SESSION SUMMARY (one row per session, written at the end)
 // ============================================================
-void writeSessionSummary(const char* status) {
+// Columns appended at the END only, so rows written by v5 still
+// line up with the first 18 columns of this header.
+const char* SESSION_HEADER =
+  "version,session_label,attempt,status,rows,late_samples,missed_slots,clipped_samples,"
+  "failed_reads,peak_linear_g,peak_vertical_g,peak_horizontal_g,peak_gyro_dps,max_tilt_deg,"
+  "cal_sys,cal_gyro,cal_accel,reset_reason,"
+  "duration_ms,effective_hz,upright_still,"
+  "t_peak_linear_ms,t_peak_vertical_ms,t_peak_horizontal_ms,t_peak_gyro_ms,t_max_tilt_ms";
+
+void writeSummaryLine(const char* line) {
   bool isNew = !LittleFS.exists(SESSION_FILE);
   File f = LittleFS.open(SESSION_FILE, "a");
   if (!f) return;
-  if (isNew) {
-    f.println("version,session_label,attempt,status,rows,late_samples,missed_slots,clipped_samples,"
-              "failed_reads,peak_linear_g,peak_vertical_g,peak_horizontal_g,peak_gyro_dps,max_tilt_deg,"
-              "cal_sys,cal_gyro,cal_accel,reset_reason");
-  }
-  char line[320];
+  if (isNew) f.println(SESSION_HEADER);
+  f.println(line);
+  f.close();
+}
+
+void writeSessionSummary(const char* status) {
+  const float effectiveHz = lastRowMs > 0 ? readingCount * 1000.0f / lastRowMs : 0.0f;
+  char line[400];
   snprintf(line, sizeof(line),
-           "%s,%s,%d,%s,%lu,%lu,%lu,%lu,%lu,%.3f,%.3f,%.3f,%.1f,%.1f,%u,%u,%u,%s",
+           "%s,%s,%d,%s,%lu,%lu,%lu,%lu,%lu,%.3f,%.3f,%.3f,%.1f,%.1f,%u,%u,%u,%s,"
+           "%lu,%.1f,%d,%lu,%lu,%lu,%lu,%lu",
            GATHER_VERSION, sessionLabels[sessionMode], attemptNumber, status,
            readingCount, lateSamples, missedSlots, clippedSamples, failedReads,
            peakLinearG, peakVerticalG, peakHorizontalG, peakGyroDps, maxTiltDeg,
-           calSys, calGyro, calAccel, resetReasonLabel.c_str());
-  f.println(line);
-  f.close();
+           calSys, calGyro, calAccel, resetReasonLabel.c_str(),
+           lastRowMs, effectiveHz, uprightStill ? 1 : 0,
+           tPeakLinear, tPeakVertical, tPeakHorizontal, tPeakGyro, tMaxTilt);
+  writeSummaryLine(line);
+}
+
+// The previous power-up stopped mid-session (power lost / unplugged
+// early / crash rig knocked the battery out). Its rows are in the big
+// log but it never got a summary row — add one so analysis can find
+// and drop it. Peaks are unknown, left empty. Called after LittleFS is up.
+void recordInterruptedSession() {
+  const byte flag = EEPROM.read(IN_PROGRESS_ADDR);
+  if (flag == 0 || flag == 255) return;
+  const int category = flag - 1;
+  const int attempt = EEPROM.read(IN_PROGRESS_ATTEMPT_ADDR);
+  if (category >= 0 && category <= 3) {
+    char line[200];
+    snprintf(line, sizeof(line), "%s,%s,%d,INTERRUPTED,,,,,,,,,,,,,,%s,,,,,,,,",
+             GATHER_VERSION, sessionLabels[category], attempt, resetReasonLabel.c_str());
+    writeSummaryLine(line);
+    Serial.printf("[WARNING] Previous session (%s #%d) was cut off — recorded as INTERRUPTED.\n",
+                  sessionLabels[category], attempt);
+  }
+  EEPROM.write(IN_PROGRESS_ADDR, 0);
+  EEPROM.commit();
+}
+
+void setInProgress(bool active) {
+  EEPROM.write(IN_PROGRESS_ADDR, active ? sessionMode + 1 : 0);
+  if (active) EEPROM.write(IN_PROGRESS_ATTEMPT_ADDR, (byte)attemptNumber);
+  EEPROM.commit();
 }
 
 void endSession(const char* status) {
@@ -347,16 +434,21 @@ void endSession(const char* status) {
   if (logFile) logFile.close();
   digitalWrite(LED_PIN, LOW);
   writeSessionSummary(status);
+  setInProgress(false);
   signalTestComplete();
 
   Serial.println("-------------------------------------");
   Serial.printf("[SUMMARY] %s #%d  status=%s\n", sessionLabels[sessionMode], attemptNumber, status);
-  Serial.printf("[SUMMARY] rows=%lu  late=%lu  missed_slots=%lu  clipped=%lu  failed_reads=%lu\n",
-                readingCount, lateSamples, missedSlots, clippedSamples, failedReads);
-  Serial.printf("[SUMMARY] peak linear %.2f g | vertical %.2f g | horizontal %.2f g | gyro %.0f deg/s | max tilt %.1f deg\n",
-                peakLinearG, peakVerticalG, peakHorizontalG, peakGyroDps, maxTiltDeg);
+  Serial.printf("[SUMMARY] rows=%lu in %lu ms (%.1f Hz)  late=%lu  missed_slots=%lu  clipped=%lu  failed_reads=%lu\n",
+                readingCount, lastRowMs, lastRowMs > 0 ? readingCount * 1000.0f / lastRowMs : 0.0f,
+                lateSamples, missedSlots, clippedSamples, failedReads);
+  Serial.printf("[SUMMARY] peak linear %.2f g @%lu ms | vertical %.2f g @%lu ms | horizontal %.2f g @%lu ms\n",
+                peakLinearG, tPeakLinear, peakVerticalG, tPeakVertical, peakHorizontalG, tPeakHorizontal);
+  Serial.printf("[SUMMARY] peak gyro %.0f deg/s @%lu ms | max tilt %.1f deg @%lu ms | upright_still=%d\n",
+                peakGyroDps, tPeakGyro, maxTiltDeg, tMaxTilt, uprightStill ? 1 : 0);
   if (clippedSamples > 0) Serial.println("[NOTE] Some readings hit the 4 g sensor limit: real peaks were higher.");
   if (missedSlots > SESSION_ROWS / 100) Serial.println("[NOTE] More than 1% of samples were missed.");
+  if (!uprightStill) Serial.println("[NOTE] Upright was captured while moving: tilt values are less reliable.");
   Serial.println("[SESSION] Complete. Safe to unplug.");
   Serial.println("-------------------------------------");
 }
@@ -401,6 +493,19 @@ void setup() {
   if (esp_task_wdt_init(&wdt_config) != ESP_OK) esp_task_wdt_reconfigure(&wdt_config);
   esp_task_wdt_add(NULL);
 
+  // --- Start delay: nothing written to storage or EEPROM yet ---
+  Serial.printf("[INIT] Starting in %lu s — unplug now to skip this session.\n", START_DELAY_MS / 1000);
+  for (unsigned long waited = 0; waited < START_DELAY_MS; waited += 1000) {
+    if (waited % 5000 == 0) {   // short tick every 5 s
+      tone(BUZZER_PIN, 1000, 40);
+      digitalWrite(LED_PIN, HIGH); delay(40); digitalWrite(LED_PIN, LOW);
+      delay(960);
+    } else {
+      delay(1000);
+    }
+    esp_task_wdt_reset();
+  }
+
   EEPROM.begin(EEPROM_SIZE);
 
   // --- Sensor presence check (IMU mode: accel + gyro fusion,
@@ -417,6 +522,7 @@ void setup() {
 
   // --- Storage: a session only starts if ALL of it fits ---
   if (!retryCheck(tryLittleFsBegin)) haltWithFailureSignal("LittleFS mount failed after retries.");
+  recordInterruptedSession();
   size_t freeAtBoot = freeBytes();
   Serial.printf("[STORAGE] Free: %u / %u bytes. One session needs ~%u bytes -> %u session(s) fit.\n",
                 (unsigned)freeAtBoot, (unsigned)LittleFS.totalBytes(),
@@ -468,6 +574,7 @@ void setup() {
 
   logFile = LittleFS.open(LOG_FILE, "a");
   if (!logFile) haltWithFailureSignal("Could not open the log file for writing.");
+  setInProgress(true);   // cleared in endSession(); still set on next boot = power was lost
 
   testStartMs = millis();
   testStartUs = micros();
@@ -558,12 +665,14 @@ void loop() {
                        fabsf(raw.z()) >= CLIP_LIMIT_MS2;
   if (clipped) clippedSamples++;
 
-  // --- Session peaks ---
-  peakLinearG = fmaxf(peakLinearG, linearG);
-  peakVerticalG = fmaxf(peakVerticalG, verticalG);
-  peakHorizontalG = fmaxf(peakHorizontalG, horizontalG);
-  peakGyroDps = fmaxf(peakGyroDps, gyroDps);
-  maxTiltDeg = fmaxf(maxTiltDeg, tiltDeg);
+  // --- Session peaks + when they happened (same t_ms as the log row) ---
+  const unsigned long tMs = (nowUs - testStartUs) / 1000UL;
+  lastRowMs = tMs;
+  if (linearG > peakLinearG)         { peakLinearG = linearG;         tPeakLinear = tMs; }
+  if (verticalG > peakVerticalG)     { peakVerticalG = verticalG;     tPeakVertical = tMs; }
+  if (horizontalG > peakHorizontalG) { peakHorizontalG = horizontalG; tPeakHorizontal = tMs; }
+  if (gyroDps > peakGyroDps)         { peakGyroDps = gyroDps;         tPeakGyro = tMs; }
+  if (tiltDeg > maxTiltDeg)          { maxTiltDeg = tiltDeg;          tMaxTilt = tMs; }
 
   // --- Live telemetry (Serial Monitor only), 10 Hz so it never slows sampling ---
   if (readingCount % 10 == 0) {
@@ -583,7 +692,6 @@ void loop() {
 
   // --- Persistent log ---
   char row[256];
-  const unsigned long tMs = (nowUs - testStartUs) / 1000UL;
   snprintf(row, sizeof(row),
            "%s,%d,%lu,%lu,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.1f,%.1f,%d,%d",
            sessionLabels[sessionMode], attemptNumber, readingCount, tMs,

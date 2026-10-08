@@ -70,7 +70,7 @@ const unsigned long ALARM_MAX_MS        = 120000; // buzzer alarm stops by itsel
 #define BLACKBOX_MAX_FILES 10      // oldest deleted first
 
 // ---------------- Network ----------------
-#define MAX_SAVED_NETWORKS 3       // e.g. three team members' phone hotspots
+#define MAX_SAVED_NETWORKS 10      // team members' phone hotspots; the oldest is replaced when full
 #define SETUP_AP_PASSWORD "aviso1234"
 #define SETUP_AP_AFTER_MS 60000    // no hotspot found this long -> open the setup network
 #define SETUP_AP_LINGER_MS 60000   // keep it open this long after joining a hotspot

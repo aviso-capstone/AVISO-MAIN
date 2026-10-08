@@ -13,6 +13,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <esp_task_wdt.h>
 
 namespace {
   // Recreated whenever the saved list changes (WiFiMulti has no "clear").
@@ -105,6 +106,12 @@ namespace {
     for (int i = 0; i < MAX_SAVED_NETWORKS - 1; i++) { savedSsid[i] = savedSsid[i + 1]; savedPass[i] = savedPass[i + 1]; }
     savedSsid[MAX_SAVED_NETWORKS - 1] = ssid;
     savedPass[MAX_SAVED_NETWORKS - 1] = pass;
+    saveNetworks();
+    rebuildWifiMulti();
+  }
+
+  void forgetNetworks() {
+    for (int i = 0; i < MAX_SAVED_NETWORKS; i++) { savedSsid[i] = ""; savedPass[i] = ""; }
     saveNetworks();
     rebuildWifiMulti();
   }
@@ -306,6 +313,14 @@ namespace {
   }
 
   // ---------------------------------------------------------- setup page + black box
+  // "a******3": enough to spot a wrong saved password on the Serial Monitor.
+  String maskPassword(const String& p) {
+    if (p.length() <= 2) return String(p.length(), '*');
+    String m = p.substring(0, 1);
+    for (size_t i = 1; i + 1 < p.length(); i++) m += '*';
+    return m + p.substring(p.length() - 1);
+  }
+
   String htmlEscape(const String& s) {
     String o;
     for (size_t i = 0; i < s.length(); i++) {
@@ -319,7 +334,10 @@ namespace {
   void handleSetupPage() {
     String networks;
     for (int i = 0; i < MAX_SAVED_NETWORKS; i++)
-      if (savedSsid[i].length()) networks += "<li>" + htmlEscape(savedSsid[i]) + "</li>";
+      if (savedSsid[i].length())
+        networks += "<li>" + htmlEscape(savedSsid[i]) + " <small>(" +
+                    (savedPass[i].length() ? String(savedPass[i].length()) + "-character password" : String("no password")) +
+                    ")</small></li>";
     if (!networks.length()) networks = "<li>none yet</li>";
 
     String page =
@@ -336,7 +354,10 @@ namespace {
       "<label>AVISO server URL</label><input name=srv placeholder='http://192.168.43.50:8000' value='" + htmlEscape(serverUrl) + "'>"
       "<label>Pairing code (from the AVISO app)</label><input name=code inputmode=numeric maxlength=6>"
       "<button>Save</button></form>"
-      "<p>After saving, turn on that hotspot. The unit beeps once when paired.</p></body></html>";
+      "<p>After saving, turn on that hotspot. The unit beeps once when paired.</p>"
+      "<form method=post action=/forget onsubmit=\"return confirm('Forget all saved hotspots?')\">"
+      "<button style='background:#6B7280'>Forget saved hotspots</button></form>"
+      "<p>Keeps the pairing and the server URL. Add your hotspot again above.</p></body></html>";
     http.send(200, "text/html", page);
   }
 
@@ -347,7 +368,17 @@ namespace {
     String code = http.arg("code");
     ssid.trim(); srv.trim(); code.trim();
 
-    if (ssid.length()) rememberNetwork(ssid, pass);
+    if (srv.length() && !srv.startsWith("http://") && !srv.startsWith("https://")) {
+      setupMessage = "Server URL must start with http:// or https:// - nothing was saved.";
+      http.sendHeader("Location", "/");
+      http.send(303);
+      return;
+    }
+
+    if (ssid.length()) {
+      rememberNetwork(ssid, pass);
+      Serial.printf("[SETUP] Saved hotspot \"%s\" password %s (%u characters)\n", ssid.c_str(), maskPassword(pass).c_str(), pass.length());
+    }
     if (srv.length()) {
       while (srv.endsWith("/")) srv.remove(srv.length() - 1);
       serverUrl = srv;
@@ -361,6 +392,13 @@ namespace {
     http.sendHeader("Location", "/");
     http.send(303);
     lastConnectAttempt = 0;   // try the new hotspot right away
+  }
+
+  void handleForget() {
+    forgetNetworks();
+    setupMessage = "Saved hotspots cleared. Add your phone hotspot above.";
+    http.sendHeader("Location", "/");
+    http.send(303);
   }
 
   bool safeFileName(const String& n) {
@@ -407,6 +445,52 @@ namespace {
     Serial.println("[SETUP] Setup Wi-Fi closed (joined the hotspot).");
   }
 
+  const char* securityName(wifi_auth_mode_t m) {
+    switch (m) {
+      case WIFI_AUTH_OPEN:          return "open (no password)";
+      case WIFI_AUTH_WEP:           return "WEP";
+      case WIFI_AUTH_WPA_PSK:       return "WPA";
+      case WIFI_AUTH_WPA2_PSK:      return "WPA2";
+      case WIFI_AUTH_WPA_WPA2_PSK:  return "WPA/WPA2";
+      case WIFI_AUTH_WPA3_PSK:      return "WPA3 only (not supported well - use WPA2)";
+      case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3 mixed (try WPA2 only)";
+      default:                      return "other";
+    }
+  }
+
+  // Before each join attempt: what the device can actually see of the saved
+  // hotspots. Quotes show stray spaces in names.
+  void logSavedHotspots() {
+    for (int i = 0; i < MAX_SAVED_NETWORKS; i++)
+      if (savedSsid[i].length())
+        Serial.printf("[WIFI] Saved: \"%s\" password %s (%u characters)\n", savedSsid[i].c_str(), maskPassword(savedPass[i]).c_str(), savedPass[i].length());
+  }
+
+  void logVisibleHotspots() {
+    const int n = WiFi.scanNetworks(false, false);
+    esp_task_wdt_reset();   // the scan can take a few seconds
+    if (n < 0) return;
+    for (int s = 0; s < MAX_SAVED_NETWORKS; s++) {
+      if (!savedSsid[s].length()) continue;
+      bool seen = false;
+      for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) != savedSsid[s]) continue;
+        seen = true;
+        Serial.printf("[SCAN] \"%s\" seen: channel %ld, signal %ld dBm, security %s\n",
+                      savedSsid[s].c_str(), (long)WiFi.channel(i), (long)WiFi.RSSI(i),
+                      securityName(WiFi.encryptionType(i)));
+        if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN && savedPass[s].length())
+          Serial.println("[SCAN]   hotspot has NO password but one is saved - save it again with the password empty");
+        if (WiFi.encryptionType(i) != WIFI_AUTH_OPEN && !savedPass[s].length())
+          Serial.println("[SCAN]   hotspot needs a password but none is saved");
+      }
+      if (!seen)
+        Serial.printf("[SCAN] \"%s\" not visible (off, 5 GHz only, hidden or out of range); %d networks around\n",
+                      savedSsid[s].c_str(), n);
+    }
+    WiFi.scanDelete();
+  }
+
   void manageWifi(unsigned long now) {
     const bool connected = WiFi.status() == WL_CONNECTED;
 
@@ -435,6 +519,7 @@ namespace {
     const unsigned long retryEvery = apActive ? 30000 : 10000;
     if (savedCount() > 0 && (lastConnectAttempt == 0 || now - lastConnectAttempt >= retryEvery)) {
       lastConnectAttempt = now;
+      logVisibleHotspots();
       // A 3 s limit was too short for phone hotspots: the join was cut off and
       // restarted before it finished, which looked like "connects then drops".
       wifiMulti->run(WIFI_CONNECT_TIMEOUT_MS);
@@ -458,6 +543,7 @@ void begin() {
                   WiFi.disconnectReasonName((wifi_err_reason_t)reason));
   }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   rebuildWifiMulti();
+  logSavedHotspots();
   Serial.printf("[WIFI] %d saved hotspot(s), server %s, %s\n", savedCount(),
                 serverUrl.length() ? serverUrl.c_str() : "(not set)",
                 deviceKey.length() ? "paired" : (pendingCode.length() ? "pairing code waiting" : "not paired"));
@@ -465,6 +551,7 @@ void begin() {
 
   http.on("/", HTTP_GET, handleSetupPage);
   http.on("/save", HTTP_POST, handleSave);
+  http.on("/forget", HTTP_POST, handleForget);
   http.onNotFound(handleNotFound);
   http.begin();
 
