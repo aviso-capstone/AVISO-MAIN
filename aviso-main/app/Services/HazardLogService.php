@@ -12,7 +12,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HazardLogService
 {
-    public function __construct(private BarangayLocatorService $barangayLocator)
+    public function __construct(
+        private BarangayLocatorService $barangayLocator,
+        private TripService $tripService,
+    )
     {
         //
     }
@@ -127,12 +130,7 @@ class HazardLogService
         $data['status']      = HazardLog::STATUS_ACTIVE;
         $data['detected_at'] = $detectedAt;
 
-        if (!empty($data['rider_code'])) {
-            $activeTrip = Trip::active()->byRider($data['rider_code'])->first();
-            if ($activeTrip) {
-                $data['trip_id'] = $activeTrip->id;
-            }
-        }
+        $data['trip_id'] = $this->resolveTripId($data, $detectedAt);
 
         if (isset($data['confidence']) && $data['confidence'] <= 1) {
             $data['confidence'] = $data['confidence'] * 100;
@@ -152,6 +150,25 @@ class HazardLogService
                 }
             }
         }
+    }
+
+    /**
+     * The ride this detection belongs to: the trip id the phone sent if it is this rider's, otherwise the
+     * rider's trip that was running at detection time (works for detections uploaded late).
+     */
+    private function resolveTripId(array $data, CarbonInterface $detectedAt): ?int
+    {
+        $userId = $data['user_id'] ?? null;
+        if (!$userId) {
+            return null;
+        }
+
+        if (!empty($data['trip_id'])
+            && Trip::whereKey($data['trip_id'])->where('user_id', $userId)->exists()) {
+            return (int) $data['trip_id'];
+        }
+
+        return $this->tripService->tripAt((int) $userId, $detectedAt)?->id;
     }
 
     /**

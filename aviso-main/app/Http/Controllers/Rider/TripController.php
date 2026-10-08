@@ -53,6 +53,8 @@ class TripController extends Controller
                 $trip,
                 (float) $request->latitude,
                 (float) $request->longitude,
+                $request->validated('ended_at'),
+                $request->validated('route_points'),
             );
         } catch (\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
