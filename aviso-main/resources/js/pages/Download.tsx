@@ -177,7 +177,7 @@ export default function Download({ build }: DownloadProps) {
                         />
                     </div>
                     <CardTitle className="text-2xl font-heading tracking-tight text-center">
-                        AVISO Mobile
+                        AVISO
                     </CardTitle>
                     <CardDescription className="text-center">
                         Road hazard alerts and crash detection for riders
