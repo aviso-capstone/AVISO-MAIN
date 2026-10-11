@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\Rider;
 
+use App\Http\Requests\Concerns\NormalizesPersonNames;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class RegisterRequest extends FormRequest
 {
+    use NormalizesPersonNames;
+
     public function authorize(): bool
     {
         return true;
