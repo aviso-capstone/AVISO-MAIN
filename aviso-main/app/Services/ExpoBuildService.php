@@ -160,7 +160,7 @@ class ExpoBuildService
         try {
             $bytes = Http::timeout(10)->head($url)->header('Content-Length');
             if (is_numeric($bytes) && (int) $bytes > 0) {
-                return round((int) $bytes / 1048576, 1) . ' MB';
+                return round((int) $bytes / 1000000, 1) . ' MB';
             }
         } catch (\Throwable) {
             // file size is cosmetic
