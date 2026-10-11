@@ -50,3 +50,12 @@ export function getHazardTailwindColors(type: string): string {
             return "text-gray-600 bg-gray-100 border-gray-200";
     }
 }
+
+// Camera Hazard Distance is an estimate from the box size, so it is shown with the
+// same Near / Ahead / Far word the rider hears (same limits as the mobile app).
+export function cameraDistanceLabel(meters: number | string | null | undefined): string {
+    if (meters == null || meters === '') return '-';
+    const m = Math.round(Number(meters));
+    const word = m < 5 ? 'Near' : m <= 15 ? 'Ahead' : 'Far';
+    return `~${m} m · ${word}`;
+}

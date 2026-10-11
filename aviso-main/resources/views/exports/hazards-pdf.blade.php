@@ -51,9 +51,10 @@
                 <th>Type</th>
                 <th>Area</th>
                 <th>Confidence</th>
-                <th>Distance</th>
+                <th>Camera Hazard Distance</th>
+                <th>Hazard to Hazard Distance</th>
                 <th>Status</th>
-                <th>Detected At</th>
+                <th>Detected At (PH time)</th>
             </tr>
         </thead>
         <tbody>
@@ -63,13 +64,14 @@
                     <td>{{ $log->type }}</td>
                     <td>{{ $log->area }}</td>
                     <td>{{ $log->confidence }}%</td>
-                    <td>{{ $log->distance }}m</td>
+                    <td>{{ $log->distance !== null ? '~' . round($log->distance) . ' m' : '-' }}</td>
+                    <td>{{ $log->nearest_hazard_distance !== null ? $log->nearest_hazard_distance . ' m (' . $log->nearest_hazard_code . ')' : '-' }}</td>
                     <td>{{ ucfirst($log->status) }}</td>
-                    <td>{{ $log->detected_at ? $log->detected_at->format('Y-m-d H:i') : '' }}</td>
+                    <td>{{ $log->detected_at ? $log->detected_at->copy()->setTimezone($timezone)->format('Y-m-d H:i') : '' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center">No hazard logs found for the applied filters.</td>
+                    <td colspan="8" class="text-center">No hazard logs found for the applied filters.</td>
                 </tr>
             @endforelse
         </tbody>

@@ -12,6 +12,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HazardLogService
 {
+    /** ~2 km in degrees of latitude: the box searched before falling back to all hazards. */
+    private const NEAREST_SEARCH_DEG = 0.018;
+
     public function __construct(
         private BarangayLocatorService $barangayLocator,
         private TripService $tripService,
@@ -56,7 +59,10 @@ class HazardLogService
         $perPage = (int) ($filters['per_page'] ?? 15);
         $perPage = in_array($perPage, [10, 15, 25, 50]) ? $perPage : 15;
 
-        return $query->paginate($perPage)->withQueryString();
+        $page = $query->paginate($perPage)->withQueryString();
+        $this->attachNearestSameType($page->getCollection());
+
+        return $page;
     }
 
     public function getExportLogs(array $filters)
@@ -75,7 +81,10 @@ class HazardLogService
             $query->orderBy('detected_at', 'desc');
         }
 
-        return $query->get();
+        $logs = $query->get();
+        $this->attachNearestSameType($logs);
+
+        return $logs;
     }
 
     public function getAdminStats(array $filters = []): array
@@ -202,10 +211,83 @@ class HazardLogService
 
     public function getRiderLogs(): \Illuminate\Database\Eloquent\Collection
     {
-        return HazardLog::where('user_id', Auth::id())
+        $logs = HazardLog::where('user_id', Auth::id())
             ->orderBy('detected_at', 'desc')
             ->limit(500)
             ->get();
+
+        $this->attachNearestSameType($logs);
+
+        return $logs;
+    }
+
+    /**
+     * Hazard to Hazard Distance: for each log, the nearest OTHER active hazard
+     * of the same type (from any rider), set as `nearest_hazard_code` and
+     * `nearest_hazard_distance` (whole meters; both null when there is none).
+     * Same type only: a barrier next to the excavation it guards is one site,
+     * not two hazards close together. Calculated when read, so it stays
+     * current as new hazards arrive.
+     */
+    public function attachNearestSameType(iterable $logs): void
+    {
+        $logs = collect($logs);
+        if ($logs->isEmpty()) {
+            return;
+        }
+
+        $candidates = HazardLog::active()
+            ->whereIn('type', $logs->pluck('type')->unique()->values())
+            ->get(['id', 'haz_code', 'type', 'latitude', 'longitude'])
+            ->groupBy('type');
+
+        foreach ($logs as $log) {
+            $sameType = $candidates->get($log->type, collect());
+            $lat = (float) $log->latitude;
+            $lng = (float) $log->longitude;
+
+            // Look nearby first (cheap box check); only scan everything when nothing is close.
+            $nearest = $this->nearestOf($sameType, $log->id, $lat, $lng, self::NEAREST_SEARCH_DEG)
+                ?? $this->nearestOf($sameType, $log->id, $lat, $lng, null);
+
+            $log->setAttribute('nearest_hazard_code', $nearest['code'] ?? null);
+            $log->setAttribute('nearest_hazard_distance', isset($nearest) ? (int) round($nearest['meters']) : null);
+        }
+    }
+
+    /** @return array{code: string, meters: float}|null */
+    private function nearestOf($hazards, int $selfId, float $lat, float $lng, ?float $boxDeg): ?array
+    {
+        $best = null;
+
+        foreach ($hazards as $other) {
+            if ($other->id === $selfId) {
+                continue;
+            }
+
+            $oLat = (float) $other->latitude;
+            $oLng = (float) $other->longitude;
+            if ($boxDeg !== null && (abs($oLat - $lat) > $boxDeg || abs($oLng - $lng) > $boxDeg)) {
+                continue;
+            }
+
+            $meters = self::metersBetween($lat, $lng, $oLat, $oLng);
+            if ($best === null || $meters < $best['meters']) {
+                $best = ['code' => $other->haz_code, 'meters' => $meters];
+            }
+        }
+
+        return $best;
+    }
+
+    /** Great-circle (haversine) distance in meters. */
+    private static function metersBetween(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return 2 * asin(sqrt($a)) * 6371000;
     }
 
     public function getActiveForMap(): \Illuminate\Database\Eloquent\Collection
@@ -223,8 +305,9 @@ class HazardLogService
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, [
-                'Code', 'Type', 'Area', 'Latitude', 'Longitude',
-                'Confidence', 'Distance (m)', 'Status', 'Detected At',
+                'Code', 'Type', 'Area', 'Latitude', 'Longitude', 'Confidence (%)',
+                'Camera Hazard Distance (m)', 'Hazard to Hazard Distance (m)', 'Nearest Same-Type Code',
+                'GPS Accuracy (m)', 'Heading (deg)', 'Rider', 'Trip ID', 'Status', 'Detected At (PH time)',
             ]);
 
             foreach ($logs as $log) {
@@ -234,10 +317,16 @@ class HazardLogService
                     $log->area,
                     $log->latitude,
                     $log->longitude,
-                    $log->confidence . '%',
+                    $log->confidence,
                     $log->distance,
+                    $log->nearest_hazard_distance,
+                    $log->nearest_hazard_code,
+                    $log->gps_accuracy,
+                    $log->heading,
+                    $log->rider_code,
+                    $log->trip_id,
                     $log->status,
-                    $log->detected_at ? $log->detected_at->format('Y-m-d H:i:s') : '',
+                    self::localTime($log->detected_at),
                 ]);
             }
 
@@ -248,8 +337,17 @@ class HazardLogService
     public function toPdfResponse(array $filters)
     {
         $logs = $this->getExportLogs($filters);
-        $pdf  = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.hazards-pdf', ['logs' => $logs]);
+        $pdf  = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.hazards-pdf', [
+            'logs'      => $logs,
+            'timezone'  => HazardLog::CODE_TIMEZONE,
+        ])->setPaper('a4', 'landscape');
 
         return $pdf->download('hazard_logs.pdf');
+    }
+
+    /** Export times in Philippine time (stored in UTC). */
+    private static function localTime(?CarbonInterface $at): string
+    {
+        return $at ? $at->copy()->setTimezone(HazardLog::CODE_TIMEZONE)->format('Y-m-d H:i:s') : '';
     }
 }

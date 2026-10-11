@@ -35,6 +35,7 @@ class HazardLogController extends Controller
         $data['rider_code'] = Auth::user()->username ?? (string) Auth::id();
 
         $log = $this->hazardLogService->processIncomingHazard($data);
+        $this->hazardLogService->attachNearestSameType([$log]);
 
         return response()->json([
             'success' => true,

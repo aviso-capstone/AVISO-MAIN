@@ -48,6 +48,8 @@ class HazardLog extends Model
         'longitude',
         'confidence',
         'distance',
+        'gps_accuracy',
+        'heading',
         'rider_code',
         'user_id',
         'trip_id',
@@ -62,6 +64,8 @@ class HazardLog extends Model
         'longitude'   => 'decimal:7',
         'confidence'  => 'decimal:2',
         'distance'    => 'decimal:2',
+        'gps_accuracy' => 'decimal:2',
+        'heading'     => 'decimal:2',
         'detected_at' => 'datetime',
         'resolved_at' => 'datetime',
     ];
