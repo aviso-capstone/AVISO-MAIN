@@ -14,7 +14,7 @@ import { MapController } from './components/map/MapController';
 import { EmergencyRiders } from './components/map/EmergencyRiders';
 import { EmergencyAlertPanel } from './components/map/EmergencyAlertPanel';
 import { EmergencyHotlinesPanel } from './components/map/EmergencyHotlinesPanel';
-import { getHazardColor, getHazardTailwindColors } from '@/lib/hazards';
+import { getHazardTailwindColors } from '@/lib/hazards';
 import { toast } from '@/lib/toast';
 import { useSosAlerts } from '@/components/sos/SosAlertProvider';
 import { type HazardLog, type SosAlertPayload } from '@/types/models';
@@ -93,9 +93,9 @@ function RealTimeClock() {
     }, []);
 
     return (
-        <div className="font-heading flex flex-col text-right border border-border/50 bg-background/50 backdrop-blur-sm p-3 rounded-xl shadow-sm">
-            <span className="text-xl font-bold tracking-tight leading-none mb-1 text-primary">{time.toLocaleTimeString()}</span>
-            <span className="text-xs text-muted-foreground font-medium">
+        <div className="font-heading flex items-baseline gap-2 border border-border/50 bg-background/50 backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-sm">
+            <span className="text-lg font-bold tracking-tight leading-none text-primary tabular-nums">{time.toLocaleTimeString()}</span>
+            <span className="hidden sm:inline text-xs text-muted-foreground font-medium">
                 {time.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </span>
         </div>
@@ -192,107 +192,84 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
         <>
             <Head title="Live Map" />
 
-            <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-                <div>
-                    <h1 className="text-3xl font-heading font-bold tracking-tight">Live Map Tracker</h1>
-                    <p className="text-muted-foreground mt-1">
+            {/* Full-height column: header rows keep their size, the map takes the rest. */}
+            <div className="flex h-full flex-col gap-3">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-baseline gap-3">
+                    <h1 className="text-2xl font-heading font-bold tracking-tight">Live Map Tracker</h1>
+                    <p className="hidden truncate text-sm text-muted-foreground lg:block">
                         Monitor real-time road hazards and system edge devices.
                     </p>
                 </div>
                 <RealTimeClock />
             </div>
 
-            {/* ── SOS Live Status ───────────────────────────────────── */}
-            <Card className={`mb-4 overflow-hidden border transition-colors duration-500 shadow-sm ${
-                activeEmergencies.length > 0
-                    ? 'border-red-500/60 bg-red-50/60 dark:bg-red-950/25'
-                    : 'border-border/50'
-            }`}>
-                <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                        {/* Icon with pulse */}
-                        <div className={`relative shrink-0 p-2.5 rounded-lg ${
+            {/* ── SOS status + hazard counts, one compact row ───────── */}
+            <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
+                <Card className={`overflow-hidden border py-0 shadow-sm transition-colors duration-500 ${
+                    activeEmergencies.length > 0
+                        ? 'border-red-500/60 bg-red-50/60 dark:bg-red-950/25'
+                        : 'border-border/50'
+                }`}>
+                    <CardContent className="flex items-center gap-3 p-3">
+                        <div className={`relative shrink-0 rounded-lg p-2 ${
                             activeEmergencies.length > 0
                                 ? 'bg-red-100 dark:bg-red-900/40'
-                                : 'bg-background border shadow-sm'
+                                : 'border bg-background shadow-sm'
                         }`}>
                             {activeEmergencies.length > 0 && (
-                                <span className="absolute inset-0 rounded-lg bg-red-400 animate-ping opacity-25" />
+                                <span className="absolute inset-0 animate-ping rounded-lg bg-red-400 opacity-25" />
                             )}
-                            <ShieldAlert className={`w-5 h-5 ${
+                            <ShieldAlert className={`h-5 w-5 ${
                                 activeEmergencies.length > 0 ? 'text-red-600' : 'text-muted-foreground'
                             }`} />
                         </div>
-
-                        {/* Text */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
                                 <p className="text-sm font-semibold leading-none">SOS Alerts</p>
-                                {activeEmergencies.length > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500 text-white animate-pulse">
-                                        {activeEmergencies.length} ACTIVE
-                                    </span>
-                                )}
+                                <span className={`h-1.5 w-1.5 rounded-full ${
+                                    activeEmergencies.length > 0 ? 'animate-pulse bg-red-500' : 'bg-green-500'
+                                }`} />
+                                <span className="text-[10px] font-medium text-muted-foreground">LIVE</span>
                             </div>
-                            <p className={`text-xs mt-1 truncate ${
+                            <p className={`mt-1 truncate text-xs ${
                                 activeEmergencies.length > 0
-                                    ? 'text-red-600 dark:text-red-400 font-medium'
+                                    ? 'font-medium text-red-600 dark:text-red-400'
                                     : 'text-muted-foreground'
                             }`}>
                                 {activeEmergencies.length === 0
-                                    ? 'No active emergencies — all riders safe'
-                                    : activeEmergencies.map(e => e.riderName).join(', ') + ' — requires immediate assistance'
+                                    ? 'All riders safe'
+                                    : activeEmergencies.map(e => e.riderName).join(', ') + ' — needs help'
                                 }
                             </p>
                         </div>
-
-                        {/* Count */}
-                        <div className={`text-3xl font-bold font-heading shrink-0 ${
+                        <div className={`shrink-0 font-heading text-2xl font-bold ${
                             activeEmergencies.length > 0 ? 'text-red-600' : 'text-muted-foreground'
                         }`}>
                             {activeEmergencies.length}
                         </div>
+                    </CardContent>
+                </Card>
 
-                        {/* Live dot */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <span className={`w-2 h-2 rounded-full ${
-                                activeEmergencies.length > 0 ? 'bg-red-500 animate-pulse' : 'bg-green-500'
-                            }`} />
-                            <span className="text-[11px] text-muted-foreground font-medium">LIVE</span>
-                        </div>
-
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* ── Stats row ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
                 {HAZARD_STATS.map((stat) => (
-                    <Card key={stat.label} className="border-border/50 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                        <CardContent className="p-4">
-                            <div className="flex justify-between items-start mb-3">
-                                <div className="p-2 rounded-lg bg-background shadow-sm border">
-                                    <div className={getHazardTailwindColors(stat.types[0]).split(' ')[0]}>
-                                        {stat.icon}
-                                    </div>
-                                </div>
-                                <div className="text-2xl font-bold font-heading">
-                                    {hazards.filter(h => stat.types.includes(h.type)).length}
+                    <Card key={stat.label} className="overflow-hidden border-border/50 py-0 shadow-sm" title={stat.description}>
+                        <CardContent className="flex items-center gap-3 p-3">
+                            <div className="shrink-0 rounded-lg border bg-background p-2 shadow-sm">
+                                <div className={getHazardTailwindColors(stat.types[0]).split(' ')[0]}>
+                                    {stat.icon}
                                 </div>
                             </div>
-                            <p className="text-sm font-medium leading-snug">{stat.label}</p>
-                            <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{stat.description}</p>
-                            <div
-                                className="h-0.5 rounded-full mt-3 opacity-60"
-                                style={{ backgroundColor: getHazardColor(stat.types[0]) }}
-                            />
+                            <p className="min-w-0 flex-1 truncate text-sm font-medium">{stat.label}</p>
+                            <div className="shrink-0 font-heading text-2xl font-bold">
+                                {hazards.filter(h => stat.types.includes(h.type)).length}
+                            </div>
                         </CardContent>
                     </Card>
                 ))}
             </div>
 
             {/* ── Map card ──────────────────────────────────────────── */}
-            <Card className="h-[calc(100vh-420px)] min-h-[420px] flex flex-col overflow-hidden border-border/50 shadow-md">
+            <Card className="min-h-[360px] flex-1 flex flex-col overflow-hidden border-border/50 py-0 shadow-md">
                 <div className="w-full h-full relative">
                     <Map
                         styles={{ light: STYLE_STANDARD, dark: STYLE_STANDARD }}
@@ -344,6 +321,7 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                     </Map>
                 </div>
             </Card>
+            </div>
         </>
     );
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Your AVISO Password</title>
+    <title>AVISO Rider App — Password Reset</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -37,6 +37,25 @@
             color: rgba(255,255,255,0.75);
             margin-top: 6px;
             font-weight: 500;
+        }
+        .badge {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            background-color: rgba(255,255,255,0.18);
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.35);
+        }
+        .where {
+            font-size: 14px;
+            color: #d4d4d8;
+            line-height: 1.6;
+            text-align: center;
+            margin-bottom: 24px;
         }
         .body {
             padding: 32px 40px;
@@ -108,12 +127,13 @@
         <div class="header">
             <div class="logo">AVISO</div>
             <div class="tagline">Road Hazard Detection System</div>
+            <div class="badge">Rider App</div>
         </div>
 
         <div class="body">
             <p class="greeting">
                 Hi <strong>{{ $firstName }}</strong>,<br><br>
-                We received a request to reset your AVISO rider password. Use the code below to continue.
+                We received a request to reset the password for your <strong>AVISO Rider app</strong> account.
             </p>
 
             <div class="otp-label">Your Password Reset Code</div>
@@ -121,6 +141,10 @@
                 <div class="otp-code">{{ $otp }}</div>
                 <div class="otp-expiry">Valid for 10 minutes</div>
             </div>
+
+            <p class="where">
+                Enter this code in the <strong>AVISO app on your phone</strong>.
+            </p>
 
             <div class="warning">
                 ⚠️ Never share this code with anyone. The AVISO team will never ask for your OTP.

@@ -1,15 +1,21 @@
 // ============================================================
-// AVISO — LittleFS Format (use when cleanup cannot free space)
+// AVISO — LittleFS Format
 // ------------------------------------------------------------
-// Erases EVERY file on the storage partition (threshold sessions,
-// black-box recordings, everything). Calibration and attempt
-// counters live in EEPROM and are NOT affected.
+// Erases EVERY file on the storage partition: session logs,
+// black-box recordings, everything. Use it only when storage
+// cannot be mounted, or when storage-cleanup reports space used
+// by nothing listed (damaged filesystem).
+// Calibration and attempt counters (EEPROM) are not affected.
 //
-// Retrieve first. Nothing is erased until you type FORMAT in the
-// Serial Monitor (115200 baud, "Newline" line ending) — so leaving
-// this sketch on the board and re-plugging it can never wipe data.
-// Upload your next sketch right after it reports [DONE].
+// HOW TO USE
+//   1. Retrieve first (retrieval-littlefs), if anything is readable.
+//   2. Upload, open the Serial Monitor at 115200 baud with the line
+//      ending set to "Newline".
+//   3. Type FORMAT and press Enter. Anything else erases nothing,
+//      so leaving this sketch on the board is harmless.
+//   4. After [DONE], upload the next sketch you need.
 // ============================================================
+
 #include <LittleFS.h>
 
 void listDir(const char* path, int depth) {

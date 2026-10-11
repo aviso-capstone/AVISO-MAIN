@@ -16,11 +16,13 @@ class PasswordResetOtpMail extends Mailable
      * Create a new message instance.
      *
      * @param string $otp   The plain-text 6-digit OTP (only sent in email, never stored plain)
-     * @param string $email The recipient email for display in the template
+     * @param string $email     The recipient email for display in the template
+     * @param string $firstName The admin's first name for the greeting
      */
     public function __construct(
         public readonly string $otp,
         public readonly string $email,
+        public readonly string $firstName,
     ) {}
 
     /**
@@ -29,7 +31,7 @@ class PasswordResetOtpMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'AVISO — Your Password Reset Code',
+            subject: 'AVISO Admin Console — Password Reset Code',
         );
     }
 
@@ -41,8 +43,9 @@ class PasswordResetOtpMail extends Mailable
         return new Content(
             view: 'emails.password-reset-otp',
             with: [
-                'otp'   => $this->otp,
-                'email' => $this->email,
+                'otp'       => $this->otp,
+                'email'     => $this->email,
+                'firstName' => $this->firstName,
             ],
         );
     }

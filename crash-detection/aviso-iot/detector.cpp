@@ -113,7 +113,11 @@ bool Detector::update(const ImuSample& s, unsigned long now, DetectorEvent& even
       break;
   }
 
-  if (phase != IDLE) return false;   // no other classification during a crash check
+  // No other classification during a crash check.
+  // Known issue (field data, Oct 2026): hard bumps exceed IMPACT_G, so each
+  // one pauses bump/brake detection for up to IMPACT_TO_FALL_MS. To be fixed
+  // with the next threshold update (only FALLEN / CONFIRMED should block).
+  if (phase != IDLE) return false;
 
   // ---------------- Bump: vertical jolt, bike upright ----------------
   if (s.verticalG >= BUMP_VERTICAL_G && upright && now - lastBumpAt >= BUMP_COOLDOWN_MS) {
@@ -125,8 +129,9 @@ bool Detector::update(const ImuSample& s, unsigned long now, DetectorEvent& even
   }
 
   // ---------------- Hard braking: sustained horizontal force, little rotation ----------------
-  // The unit does not know which way is "forward", so strong acceleration would
-  // also match; on a scooter that is rare compared with braking.
+  // Direction is not checked yet, so strong acceleration or cornering could
+  // also match. Field data shows braking always lies along one sensor axis
+  // (for a fixed mount): a signed forward-deceleration rule is planned.
   if (s.horizontalG >= BRAKE_HORIZONTAL_G && s.gyroDps <= BRAKE_MAX_GYRO_DPS && upright) {
     if (brakeSince == 0) { brakeSince = now; brakePeaks.reset(); }
     brakePeaks.add(s);

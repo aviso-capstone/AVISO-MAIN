@@ -1,10 +1,11 @@
 // ============================================================
 // AVISO IoT — configuration
 // ------------------------------------------------------------
-// Every tunable number lives here. The DETECTION THRESHOLDS are
-// PLACEHOLDERS until the threshold-gathering sessions (normal /
-// hard brake / bump / crash) are analysed — replace them with the
-// measured values, nothing else needs to change.
+// Every tunable number lives here. The detection thresholds are
+// still the first estimates: they are being replaced step by step
+// with values measured by threshold-gathering (see the notes in the
+// thresholds section). Keep aviso-mobile/constants/detections.ts
+// in sync when a value changes.
 // ============================================================
 #pragma once
 
@@ -16,7 +17,7 @@
 #define BNO055_I2C_ADDRESS 0x29   // confirmed via I2C scanner on this unit
 #define BNO055_SENSOR_ID 55
 
-// Teammate's calibration sketch stores the BNO055 offsets here (same layout).
+// Written by crash-detection/calibration (same layout everywhere).
 #define EEPROM_SIZE 512
 #define CALIBRATION_FLAG_ADDR 0   // 0x55 = valid offsets saved
 #define CALIBRATION_DATA_ADDR 1
@@ -27,12 +28,22 @@
 #define HEARTBEAT_INTERVAL_MS 30000    // tells the server our hotspot IP
 #define WDT_TIMEOUT_SEC 20             // above the worst-case HTTPS call + Wi-Fi connect
 
-// ---------------- Detection thresholds (PLACEHOLDERS) ----------------
+// ---------------- Detection thresholds (first estimates) ----------------
 // Units: g = 9.80665 m/s^2 of LINEAR acceleration (gravity removed, so 0 g
 // at rest), gyro in degrees/second, tilt in degrees from the saved upright.
+// In fusion modes the BNO055 accelerometer is fixed at +/-4 g, so harder
+// hits read as ~4 g. Keep IMPACT_G below 4.
 //
-// NOTE: in fusion modes the BNO055 accelerometer range is fixed at +/-4 g,
-// so impacts above ~4 g read as ~4 g. Keep IMPACT_G below 4.
+// Field data so far (Oct 2026: 11 normal, 4 brake, 6 bump sessions, single
+// raw samples, as this firmware checks them):
+//   IMPACT_G 3.0         exceeded by normal riding (3.38 g) and bumps (4 g)
+//                        -> a hit alone means little; the fall decides
+//   IMPACT_GYRO_DPS 250  bumps reach 224 deg/s: very little margin
+//   FALL_TILT_DEG 60     max tilt seen so far 35 deg: good margin
+//   BUMP_VERTICAL_G 0.8  fires 7-25x per 30 s of normal riding: to replace
+//   BRAKE_*              0 false alarms in normal riding, 3-8 per brake
+//                        session: keep
+// Crash, tilt and parking sessions are still to be recorded.
 const float IMPACT_G                   = 3.0f;   // hit strong enough to start a crash check
 const float IMPACT_GYRO_DPS            = 250.0f; // or a violent rotation
 const float FALL_TILT_DEG              = 60.0f;  // bike lying on its side

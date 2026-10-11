@@ -63,4 +63,10 @@ return [
         'token' => env('VITE_MAPBOX_TOKEN'),
     ],
 
+    // EAS builds of aviso-mobile — powers the public /download page.
+    'expo' => [
+        'project_id'   => env('EXPO_PROJECT_ID'),
+        'access_token' => env('EXPO_ACCESS_TOKEN'),
+    ],
+
 ];

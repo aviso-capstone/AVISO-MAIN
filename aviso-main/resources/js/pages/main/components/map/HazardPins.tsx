@@ -4,6 +4,13 @@ import { getHazardColor } from '@/lib/hazards';
 import { type HazardLog } from '@/types/models';
 import useSupercluster from 'use-supercluster';
 
+// Pins only merge into a number bubble when they truly overlap on screen, and
+// from zoom 16 (street level) up every hazard is drawn as its own pin.
+const CLUSTER_RADIUS_PX = 40;
+const CLUSTER_MAX_ZOOM = 15;
+// ~10 m — far enough apart to click each stacked hazard once zoomed in.
+const DUPLICATE_SPREAD_DEG = 0.00009;
+
 interface HazardPinsProps {
     hazards?: HazardLog[];
     theme?: 'day' | 'night' | 'dusk' | 'dawn';
@@ -36,30 +43,53 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
     }, [map]);
 
     const points = useMemo(() => {
-        return hazards.map((h) => ({
-            type: "Feature" as const,
-            properties: {
-                cluster: false,
-                hazardId: h.id,
-                hazardType: h.type,
-                timestamp: h.detected_at,
-                confidence: h.confidence,
-                distance: h.distance,
-                riderId: h.rider_code,
-                area: h.area
-            },
-            geometry: {
-                type: "Point" as const,
-                coordinates: [Number(h.longitude), Number(h.latitude)]
-            }
-        }));
+        // Hazards reported at the exact same spot would sit on top of each other
+        // and only one could ever be clicked. Spread each such stack around a
+        // small ring (display only; the stored coordinates are untouched).
+        const stacks = new Map<string, number>();
+        const stackIndex = hazards.map((h) => {
+            const key = `${Number(h.latitude).toFixed(6)},${Number(h.longitude).toFixed(6)}`;
+            const index = stacks.get(key) ?? 0;
+            stacks.set(key, index + 1);
+            return { key, index };
+        });
+
+        return hazards.map((h, i) => {
+            const { key, index } = stackIndex[i];
+            const stackSize = stacks.get(key) ?? 1;
+            const angle = (2 * Math.PI * index) / stackSize;
+            const offset = stackSize > 1 ? DUPLICATE_SPREAD_DEG : 0;
+            const lat = Number(h.latitude);
+            const lng = Number(h.longitude);
+
+            return {
+                type: "Feature" as const,
+                properties: {
+                    cluster: false,
+                    hazardId: h.id,
+                    hazardType: h.type,
+                    timestamp: h.detected_at,
+                    confidence: h.confidence,
+                    distance: h.distance,
+                    riderId: h.rider_code,
+                    area: h.area,
+                    // Real position for the popup — the pin itself may be spread out.
+                    lat,
+                    lng,
+                },
+                geometry: {
+                    type: "Point" as const,
+                    coordinates: [lng + offset * Math.cos(angle), lat + offset * Math.sin(angle)],
+                },
+            };
+        });
     }, [hazards]);
 
     const { clusters, supercluster } = useSupercluster({
         points,
         bounds,
         zoom,
-        options: { radius: 75, maxZoom: 20 }
+        options: { radius: CLUSTER_RADIUS_PX, maxZoom: CLUSTER_MAX_ZOOM }
     });
 
     const viewportStats = useMemo(() => {
@@ -87,7 +117,7 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
             {clusters.map(cluster => {
                 const [longitude, latitude] = cluster.geometry.coordinates;
                 const properties = cluster.properties as any;
-                const { cluster: isCluster, point_count: pointCount, hazardId, hazardType, timestamp, confidence, distance, riderId, area } = properties;
+                const { cluster: isCluster, point_count: pointCount, hazardId, hazardType, timestamp, confidence, distance, riderId, area, lat, lng } = properties;
 
                 if (isCluster) {
                     return (
@@ -98,8 +128,8 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
                             onClick={() => {
                                 if (supercluster && cluster.id) {
                                     const expansionZoom = Math.min(
-                                        supercluster.getClusterExpansionZoom(cluster.id as number), 
-                                        20
+                                        supercluster.getClusterExpansionZoom(cluster.id as number),
+                                        CLUSTER_MAX_ZOOM + 1
                                     );
                                     map?.flyTo({ center: [longitude, latitude], zoom: expansionZoom });
                                 }
@@ -131,7 +161,7 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
                                 <div className="space-y-2 text-muted-foreground">
                                     <p className="flex justify-between"><strong className="text-foreground">Detected:</strong> {new Date(timestamp as string).toLocaleTimeString()}</p>
                                     <p className="flex justify-between"><strong className="text-foreground">Address/Area:</strong> {area}</p>
-                                    <p className="flex justify-between"><strong className="text-foreground">Coordinates:</strong> <span className="font-mono text-[10px]">{latitude.toFixed(6)}, {longitude.toFixed(6)}</span></p>
+                                    <p className="flex justify-between"><strong className="text-foreground">Coordinates:</strong> <span className="font-mono text-[10px]">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</span></p>
                                     <p className="flex justify-between"><strong className="text-foreground">Confidence:</strong> <span className="text-green-600 font-semibold">{confidence}%</span></p>
                                     <p className="flex justify-between"><strong className="text-foreground">Distance:</strong> {distance} m</p>
                                     <p className="flex justify-between"><strong className="text-foreground">Rider ID:</strong> <span className="font-mono">{riderId}</span></p>

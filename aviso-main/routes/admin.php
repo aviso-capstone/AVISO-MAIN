@@ -10,6 +10,14 @@ Route::middleware('web')->group(function () {
     // Redirect root to login
     Route::redirect('/', '/login');
 
+    // Public mobile app download page (no login) — serves the newest EAS preview APK
+    Route::get('/download', [\App\Http\Controllers\DownloadController::class, 'index'])
+        ->middleware('throttle:60,1')
+        ->name('download');
+    Route::get('/download/apk', [\App\Http\Controllers\DownloadController::class, 'apk'])
+        ->middleware('throttle:20,1')
+        ->name('download.apk');
+
     // Admin Dashboard (Protected by session auth + admin role check)
     Route::middleware(['auth', RequireAdminRole::class])->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\Admin\DashboardController::class, 'index'])->name('dashboard');

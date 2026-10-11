@@ -38,19 +38,13 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        try {
-            $this->passwordResetService->sendOtp($validated['email']);
+        // Same answer whether or not the email is an admin — no account enumeration.
+        $this->passwordResetService->sendOtp($validated['email']);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'OTP sent successfully.',
-            ]);
-        } catch (ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'errors'  => $e->errors(),
-            ], 422);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'If that email belongs to an admin account, an OTP has been sent.',
+        ]);
     }
 
     /**
@@ -87,7 +81,6 @@ class PasswordResetController extends Controller
     public function reset(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email'                 => ['required', 'email'],
             'password'              => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8)->mixedCase(), 'confirmed'],
             'password_confirmation' => ['required', 'string'],
         ]);
@@ -101,8 +94,12 @@ class PasswordResetController extends Controller
         }
 
         try {
+            // Email and nonce come from the signed query string only. A body
+            // field would override it in $request->input() and let one admin's
+            // link reset another admin's password.
             $this->passwordResetService->resetPassword(
-                $validated['email'],
+                (string) $request->query('email'),
+                (string) $request->query('nonce'),
                 $validated['password'],
             );
 
