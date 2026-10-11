@@ -29,7 +29,7 @@ import {
     ChevronRight,
 } from "lucide-react";
 import { type Barangay, type HazardLog, type PaginatedData } from "@/types/models";
-import { getHazardTailwindColors } from "@/lib/hazards";
+import { cameraDistanceLabel, getHazardTailwindColors } from "@/lib/hazards";
 
 interface HazardTableProps {
     hazards: PaginatedData<HazardLog>;
@@ -167,8 +167,11 @@ export function HazardTable({
                             <TableHead className="font-semibold">
                                 Confidence
                             </TableHead>
-                            <TableHead className="font-semibold">
-                                Distance
+                            <TableHead className="font-semibold whitespace-nowrap">
+                                Camera Hazard Distance
+                            </TableHead>
+                            <TableHead className="font-semibold whitespace-nowrap">
+                                Hazard to Hazard Distance
                             </TableHead>
                             <TableHead className="font-semibold">
                                 Coordinates
@@ -186,7 +189,7 @@ export function HazardTable({
                         {hazards.data.length === 0 ? (
                             <TableRow>
                                 <TableCell
-                                    colSpan={8}
+                                    colSpan={9}
                                     className="h-32 text-center text-muted-foreground"
                                 >
                                     No hazards found matching your filters.
@@ -224,8 +227,13 @@ export function HazardTable({
                                             </span>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-sm font-mono text-muted-foreground">
-                                        {hazard.distance != null ? `${hazard.distance}m` : '-'}
+                                    <TableCell className="text-sm font-mono text-muted-foreground whitespace-nowrap">
+                                        {cameraDistanceLabel(hazard.distance)}
+                                    </TableCell>
+                                    <TableCell className="text-sm font-mono text-muted-foreground whitespace-nowrap">
+                                        {hazard.nearest_hazard_distance != null
+                                            ? `${hazard.nearest_hazard_distance} m → ${hazard.nearest_hazard_code}`
+                                            : '—'}
                                     </TableCell>
                                     <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
                                         {Number(hazard.latitude).toFixed(5)}, {Number(hazard.longitude).toFixed(5)}

@@ -34,7 +34,10 @@ export interface HazardLog {
     latitude: number;
     longitude: number;
     confidence: number;
-    distance: number;
+    distance: number | null;
+    /** Nearest other active hazard of the same type (Hazard to Hazard Distance); null when none. */
+    nearest_hazard_code?: string | null;
+    nearest_hazard_distance?: number | null;
     rider_code: string;
     status: 'active' | string;
     detected_at: string;
