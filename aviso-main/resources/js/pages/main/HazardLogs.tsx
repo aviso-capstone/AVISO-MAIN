@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Head } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { HazardStats } from './components/hazards/HazardStats';
 import { HazardTable } from './components/hazards/HazardTable';
@@ -55,11 +55,11 @@ export default function HazardLogs({ hazards, stats, areaCounts, filters, types,
                     </p>
                 </div>
                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline">
-                            <Download className="w-4 h-4 mr-2" />
-                            Export Data
-                        </Button>
+                    {/* The trigger renders its own button (styled like Button): the menu needs
+                        the button's ref to position itself, and Button can't pass a ref on React 18. */}
+                    <DropdownMenuTrigger className={buttonVariants({ variant: 'outline' })}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Export Data
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => exportData('csv')} className="cursor-pointer">
