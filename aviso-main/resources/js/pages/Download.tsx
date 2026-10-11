@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 type AvailableBuild = {
     version: string;
-    commit_message: string | null;
+    release_notes: string;
     built_at: string;
     expires_at: string | null;
     file_size: string | null;
@@ -134,12 +134,10 @@ function BuildDetails({ build }: { build: AvailableBuild }) {
                 </div>
             </dl>
 
-            {build.commit_message && (
-                <div className="space-y-1 text-sm">
-                    <p className="text-muted-foreground">What's new</p>
-                    <p className="whitespace-pre-line break-words">{build.commit_message}</p>
-                </div>
-            )}
+            <div className="space-y-1 text-sm">
+                <p className="text-muted-foreground">What's new</p>
+                <p className="whitespace-pre-line break-words">{build.release_notes}</p>
+            </div>
 
             <Separator />
 

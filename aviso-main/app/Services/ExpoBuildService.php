@@ -20,6 +20,7 @@ class ExpoBuildService
     private const CACHE_SECONDS = 300;
     private const ERROR_CACHE_SECONDS = 30;
     private const APK_PROFILE = 'preview';
+    private const DEFAULT_RELEASE_NOTES = 'Bug fixes and performance improvements.';
 
     private const QUERY = <<<'GQL'
     query LatestAndroidBuilds($appId: String!) {
@@ -28,7 +29,7 @@ class ExpoBuildService
                 builds(filter: { platform: ANDROID, status: FINISHED }, limit: 10, offset: 0) {
                     appVersion
                     buildProfile
-                    gitCommitMessage
+                    message
                     createdAt
                     expirationDate
                     artifacts { applicationArchiveUrl }
@@ -39,7 +40,7 @@ class ExpoBuildService
     GQL;
 
     /**
-     * @return array{download_url: string, version: string, commit_message: ?string, built_at: string, expires_at: ?string, file_size: ?string}|array{error: string}
+     * @return array{download_url: string, version: string, release_notes: string, built_at: string, expires_at: ?string, file_size: ?string}|array{error: string}
      */
     public function latestApk(): array
     {
@@ -100,9 +101,9 @@ class ExpoBuildService
         return [
             'download_url'   => $url,
             'version'        => $build['appVersion'] ?? '—',
-            'commit_message' => isset($build['gitCommitMessage'])
-                ? mb_substr(trim($build['gitCommitMessage']), 0, 500)
-                : null,
+            // Rider-facing notes from `eas build --message "..."`. The git commit
+            // message is developer jargon and is never shown.
+            'release_notes'  => $this->releaseNotes($build['message'] ?? null),
             'built_at'       => CarbonImmutable::parse($build['createdAt'])->toIso8601String(),
             'expires_at'     => isset($build['expirationDate'])
                 ? CarbonImmutable::parse($build['expirationDate'])->toIso8601String()
@@ -129,6 +130,13 @@ class ExpoBuildService
         }
 
         return $apks[0] ?? null;
+    }
+
+    private function releaseNotes(?string $message): string
+    {
+        $message = trim((string) $message);
+
+        return $message === '' ? self::DEFAULT_RELEASE_NOTES : mb_substr($message, 0, 500);
     }
 
     /** Never cache a build past its own expiry. */
