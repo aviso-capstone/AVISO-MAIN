@@ -28,6 +28,7 @@ class ExpoBuildService
             byId(appId: $appId) {
                 builds(filter: { platform: ANDROID, status: FINISHED }, limit: 10, offset: 0) {
                     appVersion
+                    appBuildVersion
                     buildProfile
                     message
                     createdAt
@@ -40,7 +41,7 @@ class ExpoBuildService
     GQL;
 
     /**
-     * @return array{download_url: string, version: string, release_notes: string, built_at: string, expires_at: ?string, file_size: ?string}|array{error: string}
+     * @return array{download_url: string, version: string, build_number: ?string, release_notes: string, built_at: string, expires_at: ?string, file_size: ?string}|array{error: string}
      */
     public function latestApk(): array
     {
@@ -101,6 +102,8 @@ class ExpoBuildService
         return [
             'download_url'   => $url,
             'version'        => $build['appVersion'] ?? '—',
+            // Auto-incremented by EAS on every build (eas.json autoIncrement).
+            'build_number'   => $build['appBuildVersion'] ?? null,
             // Rider-facing notes from `eas build --message "..."`. The git commit
             // message is developer jargon and is never shown.
             'release_notes'  => $this->releaseNotes($build['message'] ?? null),

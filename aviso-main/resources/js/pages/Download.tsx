@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 type AvailableBuild = {
     version: string;
+    build_number: string | null;
     release_notes: string;
     built_at: string;
     expires_at: string | null;
@@ -126,7 +127,12 @@ function BuildDetails({ build }: { build: AvailableBuild }) {
             <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                     <dt className="text-muted-foreground">Version</dt>
-                    <dd className="font-medium">{build.version}</dd>
+                    <dd className="font-medium">
+                        {build.version}
+                        {build.build_number && (
+                            <span className="text-muted-foreground"> (build {build.build_number})</span>
+                        )}
+                    </dd>
                 </div>
                 <div>
                     <dt className="text-muted-foreground">Released</dt>
