@@ -1,28 +1,30 @@
 // ============================================================
-// AVISO — BNO055 Calibration (run ONCE per physical sensor)
+// AVISO — BNO055 Calibration  (run once per physical sensor)
 // ------------------------------------------------------------
-// Saves the sensor's calibration offsets to EEPROM, where both
+// Saves the sensor's calibration offsets to EEPROM. Both
 // threshold-gathering and the field firmware (aviso-iot) load
-// them at boot:
-//   EEPROM[0]      = 0x55 (calibration saved flag)
-//   EEPROM[1..22]  = adafruit_bno055_offsets_t
-// Attempt counters at EEPROM[100..103] are left untouched.
-//
+// them at boot and refuse to run without them.
 // Runs in IMU mode (accelerometer + gyroscope, no magnetometer),
-// the same mode the other sketches use, so only gyro and accel
-// need to reach level 3.
+// like every other AVISO sketch, so only gyro and accel need
+// to reach level 3.
 //
-// HOW TO CALIBRATE (Serial Monitor at 115200 helps, not required):
-//   1. GYRO: leave the unit completely still on a table ~5 s.
-//      -> one short beep when the gyro reaches 3.
-//   2. ACCEL: hold the box still in 6 different orientations,
-//      ~3-5 s each: flat, upside down, on each of its 4 sides
-//      (like the faces of a die). Move slowly between them.
-//      -> two short beeps when the accel reaches 3.
-//   3. When both are at 3, offsets are saved automatically:
-//      three rising tones = saved. You can unplug.
-//   Alarm tones after 5 minutes = not calibrated, nothing saved.
-//      Reset and try again with steadier holds.
+// HOW TO CALIBRATE (Serial Monitor at 115200 helps, not required)
+//   1. Gyro: leave the unit completely still on a table ~5 s.
+//      1 short beep = gyro at 3.
+//   2. Accel: hold the box still in 6 orientations, 3-5 s each:
+//      flat, upside down and on each of its 4 sides (the faces of
+//      a die). Move slowly between them.
+//      2 short beeps = accel at 3.
+//   3. Both at 3 for 2 s -> saved automatically.
+//      3 rising tones = saved, safe to unplug.
+//   Alarm after 5 minutes = not calibrated, nothing saved.
+//   Reset and try again with steadier holds.
+//
+// EEPROM
+//   [0]      0x55 = calibration saved
+//   [1..22]  adafruit_bno055_offsets_t
+//   An existing calibration is replaced. Everything else
+//   (threshold-gathering counters and flags at 100-124) is kept.
 // ============================================================
 
 #include <Wire.h>

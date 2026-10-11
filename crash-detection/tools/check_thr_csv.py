@@ -1,5 +1,5 @@
 """
-AVISO — check retrieved threshold-gathering CSVs (v7).
+AVISO — check retrieved threshold-gathering CSVs (v7 and later).
 
 Retrieval copies each file over Serial, and one glitch there corrupts
 the laptop copy without any warning. Run this on every retrieved file
@@ -18,7 +18,7 @@ and prints the numbers that matter for thresholds (percentiles + max).
 
 Checks the summary (thr_sessions.csv): field counts per row, and, when
 the matching log is in the same folder, that the row count and peak
-linear g agree with the log.
+linear g agree with the log. Shows the note (v8) when there is one.
 
 Exit code 0 = everything passed, 1 = at least one problem.
 Python 3.8+, standard library only.
@@ -36,7 +36,7 @@ FULL_SESSION_ROWS = 3000
 MIN_OK_ROWS = 2990            # a few rows short of 3000 is still a complete window
 LOG_NAME = re.compile(r"^thr_([a-z]+)_(\d+)\.csv$")
 SUMMARY_NAME = "thr_sessions.csv"
-SUMMARY_MIN_FIELDS = 26       # v6 rows; v7 adds cal_*_end and rest_* at the end
+SUMMARY_MIN_FIELDS = 26       # v6 rows; later versions only add columns at the end
 GARBAGE = re.compile(r"[^\x20-\x7E]")   # anything that is not printable ASCII
 
 
@@ -190,7 +190,7 @@ def check_summary(path, log_stats):
         if len(fields) > len(header):
             rep.warn(f"line {lineno}: {len(fields)} fields but the header has {len(header)} "
                      "(rows from a newer sketch under an older header; extra columns: "
-                     "cal_*_end, rest_bias_g, rest_noise_g)")
+                     "v7 cal_*_end, rest_bias_g, rest_noise_g; v8 up_x, up_y, up_z, note)")
         version, label, attempt, status = fields[0], fields[1], fields[2], fields[3]
         line_info = f"{label} #{attempt}: {status}"
         if status not in ("INTERRUPTED",):
@@ -199,6 +199,8 @@ def check_summary(path, log_stats):
                 line_info += f", rows {rows}, late {fields[5]}, peak linear {peak:.3f} g, {fields[19]} Hz"
                 if len(fields) >= 31:
                     line_info += f", rest offset {float(fields[29]):.4f} g +/- {float(fields[30]):.4f}"
+                if len(fields) >= 35 and fields[34]:
+                    line_info += f", note {fields[34]!r}"
                 key = f"thr_{label}_{attempt}.csv"
                 if key in log_stats:
                     ls = log_stats[key]

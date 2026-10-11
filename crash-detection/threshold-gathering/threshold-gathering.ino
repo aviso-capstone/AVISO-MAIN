@@ -1,118 +1,82 @@
 // ============================================================
-// AVISO — Crash Detection Threshold Data Gathering
-// Field-Hardened v7 (No Button, Buzzer-Calibrated, 100 Hz)
+// AVISO — Threshold Data Gathering  (v8)
 // ------------------------------------------------------------
-// PURPOSE:
-//   Collects labeled sensor data for one of five motion
-//   categories (normal / brake / bump / crash / bench) to establish
-//   real, evidence-based thresholds for the AVISO IoT unit
-//   (crash-detection/aviso-iot/config.h). This sketch performs
-//   NO classification itself — it only senses, signals, and logs.
+// Records labelled 30-second sessions from the BNO055 at 100 Hz
+// so the crash / brake / bump thresholds of the field firmware
+// (aviso-iot/config.h) can be set from real data. This sketch
+// only senses, signals and logs; it does not classify anything.
 //
-// WHAT EACH ROW CONTAINS (100 rows per second):
-//   - raw BNO055 readings: linear acceleration (m/s^2, gravity
-//     removed), gyroscope (deg/s), gravity vector (m/s^2)
-//   - the SAME derived values the field firmware decides with:
-//       linearG     total linear acceleration, g (0 at rest)
-//       verticalG   up/down part (bumps), g
-//       horizontalG forward/back/sideways part (braking), g
-//       gyroDps     total rotation speed, deg/s
-//       tiltDeg     lean from the upright captured at session start
-//   - clipped: 1 when the accelerometer hit its +/-4 g limit
-//     (fusion mode range), i.e. the true peak was higher
-//   - late: 1 when this sample came late (missed time slots)
-//   so the CSV can be compared directly with config.h thresholds.
+// CATEGORIES (sessionMode; beeps at start = sessionMode + 1)
+//   0 normal    normal riding
+//   1 brake     hard braking
+//   2 bump      road bumps (put the speed in sessionNote)
+//   3 crash     drop rig only, never with a rider
+//   4 bench     idle / parked / table tests
+//   5 tilt      engine idling, lean ~10 deg left, upright, right
+//   6 parking   side stand, parking, getting on and off
+//   For crash / tilt / parking: start UPRIGHT, then tip / lean /
+//   stand it. The upright capture is the reference for tilt.
 //
-// FILES ON THE UNIT (LittleFS):
-//   /thr_<label>_<attempt>.csv  every sample of ONE session (same
-//                               columns as the old big log), e.g.
-//                               /thr_normal_90.csv
-//   /thr_sessions.csv           one summary row per session
-//                               (peaks + when they happened, data
-//                               quality, reset reason; a session cut
-//                               off by power loss gets an
-//                               INTERRUPTED row on the next boot)
-//   One file per session: a damaged file costs one session, not all.
-//   Retrieve them with the retrieval sketch, then clear them with
-//   the storage-cleanup sketch.
+// ONE SESSION PER POWER-UP
+//   1. Set sessionMode and sessionNote below, upload.
+//   2. Power on -> 15 s of ticks (one per 5 s) to get ready.
+//      Unplugging during the ticks skips the session cleanly.
+//   3. Category beeps -> upright capture (0.5 s, bike upright and
+//      steady; engine may run) -> low "start" tone.
+//      Chirps = bike is tilting; after ~5 s it records anyway and
+//      flags upright_still=0.
+//   4. 30 s window. A quiet tick every 15 s = still running.
+//   5. LED on while saving, then 3 falling tones = safe to unplug.
+//   6. Power-cycle for the next attempt. Attempt numbers are kept
+//      per category in EEPROM (they survive storage cleanup).
 //
-// SAMPLING vs STORAGE:
-//   The 30 s window is held in RAM (BNO055 native int16 units,
-//   ~73 KB) and written to flash only AFTER the window. Flash
-//   erase/write on the ESP32 pauses both cores, which is what cost
-//   v6 ~20% of its samples (late rows every ~41 rows = one 4 KB
-//   block, and every 100 rows = the flush).
+// FILES ON THE UNIT (LittleFS)
+//   /thr_<label>_<attempt>.csv  every sample of one session
+//                               (e.g. /thr_brake_7.csv)
+//   /thr_sessions.csv           one summary row per session: peaks
+//                               and when they happened, data
+//                               quality, mount vector, note.
+//                               Power lost mid-session = an
+//                               INTERRUPTED row on the next boot.
+//   Get them with retrieval-littlefs, then clear them with
+//   storage-cleanup.
 //
-// WORKFLOW (one session per power-up):
-//   1. Set sessionMode below to the category being tested.
-//   2. Upload with laptop attached, confirm the beeps:
-//      1 beep = normal, 2 = brake, 3 = bump, 4 = crash, 5 = bench
-//      (bench = table / handling tests, kept out of "normal").
-//   3. Power on: 15 s of short ticks (one every 5 s) to get the
-//      bike ready — unplugging during the ticks skips the session.
-//      Put the bike UPRIGHT and STILL. After the category beeps,
-//      the unit captures the upright position (0.5 s), then plays
-//      the low "starting" tone. The 30 s window runs from there.
-//      If the unit is moving, short chirps repeat until it is
-//      still (gives up after ~10 s and flags upright_still=0).
-//   4. Unplug laptop, power the unit independently, run the test.
-//   5. After the window the LED stays on while the session is
-//      saved (a few seconds). Three descending tones = saved,
-//      safe to unplug. Unplugging before that loses the session.
-//   6. Power-cycle for the next attempt (attempt numbers persist
-//      in EEPROM per category and survive storage cleanup).
+// LOG COLUMNS (per sample)
+//   lin / gyro / grav XYZ   raw BNO055 (m/s^2, deg/s, m/s^2)
+//   linearG                 total linear acceleration, g (0 at rest)
+//   verticalG / horizontalG along / across gravity, g
+//   gyroDps                 total rotation speed
+//   tiltDeg                 lean from the upright capture
+//   clipped                 hit the +/-4 g sensor limit (peak higher)
+//   late                    sample taken late (time slots missed)
+//   Derived exactly like aviso-iot/imu.cpp, so values compare
+//   directly with config.h.
 //
-// ARDUINO IDE SETTINGS:
-//   Board: ESP32 Dev Module (esp32 core 3.x)
-//   Partition: the partitions.csv in this folder is used instead
-//   of the Tools > Partition Scheme menu. It is the SAME layout as
-//   PlatformIO (crash-detection-v3/partitions.csv) and as the
-//   retrieval / cleanup / calibration folders, so storage is never
-//   "lost" when switching sketches or tools. ~2.4 MB = ~7 sessions.
-//   Libraries: Adafruit BNO055, Adafruit Unified Sensor
+// DESIGN NOTES
+//   - The window is kept in RAM and written to flash after it ends:
+//     flash writes pause the ESP32 and used to cost ~20 % of samples.
+//   - A session only starts if all of it fits in storage, and
+//     storage is never auto-formatted (format-littlefs does that).
+//   - The mount check compares the upright vector of normal / brake
+//     / bump sessions: the brake direction depends on the mount.
+//   - 2000 Hz is this buzzer's loudest tone (used for alerts); the
+//     700 Hz start tone is deliberately different from all alerts.
 //
-// AUDIO DESIGN NOTE:
-//   2000Hz was confirmed, by direct listening test on this
-//   specific buzzer unit, to be its loudest resonant frequency.
-//   It is used for signals where audibility matters most
-//   (failure/alarm, category confirmation, test completion).
-//   700Hz is deliberately kept for the "starting" signal so it
-//   remains unmistakably distinct from every alert tone, not
-//   because it is louder.
+// ARDUINO IDE
+//   Board ESP32 Dev Module, esp32 core 3.x.
+//   Libraries: Adafruit BNO055, Adafruit Unified Sensor.
+//   The partitions.csv in this folder replaces the Partition
+//   Scheme menu. Every AVISO sketch folder has the same file, so
+//   all of them see the same storage (~2.4 MB, ~7 sessions).
 //
-// v7 CHANGES (from v6):
-//   - Window buffered in RAM, written after it ends: no flash I/O
-//     while sampling, so no periodic late samples.
-//   - One log file per session + new summary file (/thr_*.csv).
-//   - Calibration status also read at session END (cal_*_end):
-//     right after loading offsets the BNO055 always reports 0.
-//   - New "bench" category for table / handling tests.
-//   - Summary records the at-rest offset and spread measured during
-//     the upright capture (rest_bias_g, rest_noise_g).
-//   - Storage is never auto-formatted, and a damaged filesystem
-//     (space used by nothing listed) is refused at boot: run
-//     retrieval-littlefs, then format-littlefs.
-//
-// v6 CHANGES (from v5):
-//   - Power lost mid-session is detected on the next boot and
-//     recorded as an INTERRUPTED summary row (was silent).
-//   - Upright reference only captured while still (gyro check).
-//   - Summary adds when each peak happened (t_peak_*), duration,
-//     effective sample rate and upright_still.
-//   - Attempt counter no longer restarts at 1 after 254.
-//   - 15 s start delay after power-on (ticks), nothing written during it.
-//
-// v5 CHANGES (from v4):
-//   - Storage checked every 100 rows instead of every row: the
-//     per-row check slowed as the file grew and broke 100 Hz.
-//   - Boot refuses to start a session unless a FULL session fits,
-//     so no session ends half-written.
-//   - Timing on micros(); a late sample is flagged and skipped
-//     slots are counted, instead of bursting duplicate readings.
-//   - I2C at 400 kHz; rows built with snprintf (stable timing).
-//   - clipped / late flags, firmware-matching derived values,
-//     per-session summary file, calibration status recorded.
-//   - Heartbeat LED no longer blocks sampling.
+// HISTORY
+//   v8  tilt + parking categories, sessionNote, mount vector in
+//       the summary + "mount moved" warning, gravity-direction
+//       upright check (gyro check failed with the engine running)
+//   v7  RAM-buffered window, one file per session, bench category,
+//       calibration at end, at-rest offset/noise, damaged-storage check
+//   v6  INTERRUPTED rows, peak timestamps, 15 s start delay
+//   v5  micros() timing with late/clipped flags, full-session space check
 // ============================================================
 
 #include <Wire.h>
@@ -124,16 +88,20 @@
 #include <esp_task_wdt.h>
 #include <esp_system.h>
 
-#define GATHER_VERSION "v7"
+#define GATHER_VERSION "v8"
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);  // I2C address confirmed via scanner on this hardware
 
 // ============================================================
-// SESSION CONFIGURATION — set this before each upload
+// SESSION CONFIGURATION — set before each upload
 // ============================================================
-// 0 = normal riding | 1 = hard brake | 2 = road bump | 3 = crash (drop-rig only)
-// 4 = bench (table tests, handling, mounting — never mixed into "normal")
+// 0 normal | 1 brake | 2 bump | 3 crash (drop rig only)
+// 4 bench  | 5 tilt  | 6 parking            (see CATEGORIES above)
 const int sessionMode = 0;
+
+// Saved with every session of this upload, e.g. "25kmh", "left side".
+// Max 24 characters; commas become ';'. "" = no note.
+const char* sessionNote = "";
 
 // ============================================================
 // PIN ASSIGNMENTS
@@ -147,9 +115,12 @@ const int sessionMode = 0;
 #define EEPROM_SIZE 512
 #define CALIBRATION_FLAG_ADDR 0     // 1 byte: 0x55 = valid calibration saved
 #define CALIBRATION_DATA_ADDR 1     // BNO055 offset struct
-#define ATTEMPT_COUNT_ADDR 100      // 5 bytes, one counter per category (0-4)
+#define ATTEMPT_COUNT_ADDR 100      // 7 bytes, one counter per category (0-6)
 #define IN_PROGRESS_ADDR 110        // 1 byte: category + 1 while a session is logging, 0 = none
 #define IN_PROGRESS_ATTEMPT_ADDR 111 // 1 byte: that session's attempt number
+#define MOUNT_REF_ADDR 112          // 12 bytes: upright vector (3 floats) of the last
+                                    // normal/brake/bump session = how the unit is mounted
+#define MOUNT_REF_FLAG_ADDR 124     // 1 byte: 0xA5 = MOUNT_REF_ADDR holds a valid vector
 
 // ============================================================
 // SYSTEM TIMING / SAFETY LIMITS
@@ -160,16 +131,18 @@ const int sessionMode = 0;
 #define HEARTBEAT_INTERVAL_MS 15000     // quiet "still alive" tick during the test window
 #define SAMPLE_INTERVAL_US 10000UL      // 100 Hz, the BNO055 fusion output rate
 #define UPRIGHT_SAMPLES 50              // 0.5 s average = the session's upright reference
-#define UPRIGHT_STILL_DPS 5.0f          // gyro above this during the capture = not still, retry
-#define UPRIGHT_MAX_TRIES 20            // ~10 s of retries, then capture anyway (flagged)
+#define UPRIGHT_STILL_DEG 3.0f          // gravity direction wandering more than this during the
+                                        // capture = bike not still, retry. Direction, not gyro:
+                                        // a running engine shakes the unit (gyro > 5 dps every
+                                        // time in the first field sessions) but does not tilt it.
+#define UPRIGHT_MAX_TRIES 10            // ~5 s of retries, then capture anyway (flagged)
 #define START_DELAY_MS 15000UL          // wait after power-on: time to get the bike upright and still.
                                         // Nothing is written during it, so unplugging then skips
                                         // the session cleanly (no attempt number used).
 
-const unsigned long TEST_DURATION_MS = 30000;  // 30-second window per session (see rationale: more
-                                                 // repetitions across short, clean sessions yields
-                                                 // better data than fewer long sessions with more
-                                                 // risk of unintended movement during the window)
+// 30 s per session: many short, clean sessions give better data than
+// a few long ones with more chance of unplanned movement.
+const unsigned long TEST_DURATION_MS = 30000;
 
 // Storage budget: a row is ~97 bytes (measured, bench session #94);
 // 110 leaves margin for long numbers. A session is only started
@@ -186,7 +159,9 @@ const float G = 9.80665f;
 const float CLIP_LIMIT_MS2 = 0.98f * 4.0f * G;
 
 const char* SESSION_FILE = "/thr_sessions.csv";
-const char* sessionLabels[] = {"normal", "brake", "bump", "crash", "bench"};
+const char* sessionLabels[] = {"normal", "brake", "bump", "crash", "bench", "tilt", "parking"};
+const float MOUNT_MOVED_DEG = 10.0f;   // upright vector this far from the last ride session = mount moved
+char noteClean[25];                    // sessionNote, max 24 chars, commas replaced
 const int CATEGORY_COUNT = sizeof(sessionLabels) / sizeof(sessionLabels[0]);
 char logPath[40];   // /thr_<label>_<attempt>.csv, set once the attempt number is known
 
@@ -427,21 +402,23 @@ void haltWithFailureSignal(const char* reason) {
 // The same 0.5 s also gives the at-rest linear reading: its mean is
 // the sensor's offset this session (~0.035 g on the bench) and its
 // spread is the vibration level (engine idling shows up here).
-// If the unit rotates during the 0.5 s it chirps and tries again;
-// after UPRIGHT_MAX_TRIES it keeps the last capture and flags it.
+// If the bike tilts during the 0.5 s (any gravity sample more than
+// UPRIGHT_STILL_DEG from the average direction) it chirps and tries
+// again; after UPRIGHT_MAX_TRIES it keeps the last capture and flags it.
 void captureUprightReference() {
   for (int attempt = 1; attempt <= UPRIGHT_MAX_TRIES; attempt++) {
     float sx = 0, sy = 0, sz = 0;
     float linSum = 0, linSumSq = 0;
+    float dirX[UPRIGHT_SAMPLES], dirY[UPRIGHT_SAMPLES], dirZ[UPRIGHT_SAMPLES];
     int n = 0;
-    bool moved = false;
     for (int i = 0; i < UPRIGHT_SAMPLES; i++) {
       imu::Vector<3> grav = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
-      imu::Vector<3> gyr = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
       imu::Vector<3> lin = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
-      if (norm3(gyr.x(), gyr.y(), gyr.z()) > UPRIGHT_STILL_DPS) moved = true;
-      if (norm3(grav.x(), grav.y(), grav.z()) > 8.0f) {
-        sx += grav.x(); sy += grav.y(); sz += grav.z(); n++;
+      const float gn = norm3(grav.x(), grav.y(), grav.z());
+      if (gn > 8.0f) {
+        sx += grav.x(); sy += grav.y(); sz += grav.z();
+        dirX[n] = grav.x() / gn; dirY[n] = grav.y() / gn; dirZ[n] = grav.z() / gn;
+        n++;
         const float linG = norm3(lin.x(), lin.y(), lin.z()) / G;
         linSum += linG; linSumSq += linG * linG;
       }
@@ -451,13 +428,20 @@ void captureUprightReference() {
     float len = norm3(sx, sy, sz);
     if (n == 0 || len < 1.0f) haltWithFailureSignal("Could not read gravity for the upright reference.");
     upX = sx / len; upY = sy / len; upZ = sz / len;
+
+    // Largest angle between any sample and the average direction
+    float worstDeg = 0;
+    for (int i = 0; i < n; i++) {
+      const float dot = fmaxf(-1.0f, fminf(1.0f, dirX[i] * upX + dirY[i] * upY + dirZ[i] * upZ));
+      worstDeg = fmaxf(worstDeg, acosf(dot) * 180.0f / PI);
+    }
     restBiasG = linSum / n;
     restNoiseG = sqrtf(fmaxf(0.0f, linSumSq / n - restBiasG * restBiasG));
-    uprightStill = !moved;
+    uprightStill = worstDeg <= UPRIGHT_STILL_DEG;
     if (uprightStill) return;
 
-    Serial.printf("[INIT] Unit moving during upright capture (try %d/%d) — hold the bike still.\n",
-                  attempt, UPRIGHT_MAX_TRIES);
+    Serial.printf("[INIT] Bike tilting during upright capture (%.1f deg, try %d/%d) — hold it upright.\n",
+                  worstDeg, attempt, UPRIGHT_MAX_TRIES);
     tone(BUZZER_PIN, 1700, 60);
     digitalWrite(LED_PIN, HIGH); delay(60); digitalWrite(LED_PIN, LOW);
   }
@@ -467,15 +451,16 @@ void captureUprightReference() {
 // ============================================================
 // SESSION SUMMARY (one row per session, written at the end)
 // ============================================================
-// Columns appended at the END only, so v5/v6 summary rows still
-// line up with the first columns of this header.
+// New columns are only ever added at the END, so rows from older
+// versions still line up with the first columns of this header.
 const char* SESSION_HEADER =
   "version,session_label,attempt,status,rows,late_samples,missed_slots,clipped_samples,"
   "failed_reads,peak_linear_g,peak_vertical_g,peak_horizontal_g,peak_gyro_dps,max_tilt_deg,"
   "cal_sys,cal_gyro,cal_accel,reset_reason,"
   "duration_ms,effective_hz,upright_still,"
   "t_peak_linear_ms,t_peak_vertical_ms,t_peak_horizontal_ms,t_peak_gyro_ms,t_max_tilt_ms,"
-  "cal_sys_end,cal_gyro_end,cal_accel_end,rest_bias_g,rest_noise_g";
+  "cal_sys_end,cal_gyro_end,cal_accel_end,rest_bias_g,rest_noise_g,"
+  "up_x,up_y,up_z,note";
 
 void writeSummaryLine(const char* line) {
   bool isNew = !LittleFS.exists(SESSION_FILE);
@@ -488,17 +473,18 @@ void writeSummaryLine(const char* line) {
 
 void writeSessionSummary(const char* status) {
   const float effectiveHz = lastRowMs > 0 ? readingCount * 1000.0f / lastRowMs : 0.0f;
-  char line[400];
+  char line[480];
   snprintf(line, sizeof(line),
            "%s,%s,%d,%s,%lu,%lu,%lu,%lu,%lu,%.3f,%.3f,%.3f,%.1f,%.1f,%u,%u,%u,%s,"
-           "%lu,%.1f,%d,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%.4f,%.4f",
+           "%lu,%.1f,%d,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%.4f,%.4f,%.4f,%.4f,%.4f,%s",
            GATHER_VERSION, sessionLabels[sessionMode], attemptNumber, status,
            readingCount, lateSamples, missedSlots, clippedSamples, failedReads,
            peakLinearG, peakVerticalG, peakHorizontalG, peakGyroDps, maxTiltDeg,
            calSys, calGyro, calAccel, resetReasonLabel.c_str(),
            lastRowMs, effectiveHz, uprightStill ? 1 : 0,
            tPeakLinear, tPeakVertical, tPeakHorizontal, tPeakGyro, tMaxTilt,
-           calSysEnd, calGyroEnd, calAccelEnd, restBiasG, restNoiseG);
+           calSysEnd, calGyroEnd, calAccelEnd, restBiasG, restNoiseG,
+           upX, upY, upZ, noteClean);
   writeSummaryLine(line);
 }
 
@@ -514,13 +500,51 @@ void recordInterruptedSession() {
   const int attempt = EEPROM.read(IN_PROGRESS_ATTEMPT_ADDR);
   if (category >= 0 && category < CATEGORY_COUNT) {
     char line[200];
-    snprintf(line, sizeof(line), "%s,%s,%d,INTERRUPTED,,,,,,,,,,,,,,%s,,,,,,,,,,,,,",
+    snprintf(line, sizeof(line), "%s,%s,%d,INTERRUPTED,,,,,,,,,,,,,,%s,,,,,,,,,,,,,,,,,",
              GATHER_VERSION, sessionLabels[category], attempt, resetReasonLabel.c_str());
     writeSummaryLine(line);
     Serial.printf("[WARNING] Previous session (%s #%d) was cut off — recorded as INTERRUPTED.\n",
                   sessionLabels[category], attempt);
   }
   EEPROM.write(IN_PROGRESS_ADDR, 0);
+  EEPROM.commit();
+}
+
+// sessionNote -> noteClean: max 24 chars, commas and line breaks
+// replaced so the summary CSV keeps its columns.
+void prepareNote() {
+  size_t n = 0;
+  for (const char* c = sessionNote; *c && n < sizeof(noteClean) - 1; c++) {
+    noteClean[n++] = (*c == ',' || *c == '\n' || *c == '\r') ? ';' : *c;
+  }
+  noteClean[n] = '\0';
+}
+
+// Ride sessions (normal / brake / bump) are recorded with the unit in
+// its normal mount, so their upright vector shows how it is mounted.
+// Compares with the last one and warns if the mount moved; tilt,
+// parking, crash and bench are skipped (not in the normal position).
+bool isRideCategory() { return sessionMode <= 2; }
+
+void checkMountPosition() {
+  if (!isRideCategory()) return;
+  if (EEPROM.read(MOUNT_REF_FLAG_ADDR) == 0xA5) {
+    float ref[3];
+    EEPROM.get(MOUNT_REF_ADDR, ref);
+    const float dot = fmaxf(-1.0f, fminf(1.0f, ref[0] * upX + ref[1] * upY + ref[2] * upZ));
+    const float movedDeg = acosf(dot) * 180.0f / PI;
+    if (movedDeg > MOUNT_MOVED_DEG) {
+      Serial.printf("[WARNING] Mount moved: upright is %.1f deg from the last ride session.\n", movedDeg);
+      Serial.println("[WARNING] Brake direction depends on the mount. Put the unit back the same way,");
+      Serial.println("[WARNING] or note it — this session is still recorded (up_x/y/z in the summary).");
+      signalLowStorageWarning();   // same 3 heads-up beeps
+    } else {
+      Serial.printf("[INIT] Mount position matches the last ride session (%.1f deg).\n", movedDeg);
+    }
+  }
+  const float now[3] = {upX, upY, upZ};
+  EEPROM.put(MOUNT_REF_ADDR, now);
+  EEPROM.write(MOUNT_REF_FLAG_ADDR, 0xA5);
   EEPROM.commit();
 }
 
@@ -531,8 +555,8 @@ void setInProgress(bool active) {
 }
 
 // Writes the buffered window to this session's own CSV (same columns
-// and number formats as the v5/v6 log). Returns false if the write
-// failed part-way (storage full / damaged).
+// as every earlier version). Returns false if the write failed
+// part-way (storage full or damaged).
 bool saveSessionLog() {
   const bool isNew = !LittleFS.exists(logPath);
   File file = LittleFS.open(logPath, "a");
@@ -609,9 +633,7 @@ void endSession(const char* status) {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  // Deliberately NO "while (!Serial) delay(10);" here — this
-  // unit must boot and run fully correctly with no laptop
-  // attached at all, since field testing has no Serial Monitor.
+  // No "wait for Serial": in the field there is no laptop attached.
 
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
@@ -708,18 +730,21 @@ void setup() {
   attemptNumber = getAndIncrementAttempt(sessionMode);
   snprintf(logPath, sizeof(logPath), "/thr_%s_%d.csv", sessionLabels[sessionMode], attemptNumber);
   Serial.println("-------------------------------------");
-  Serial.printf("[SESSION] Category: %s  |  Attempt #%d\n", sessionLabels[sessionMode], attemptNumber);
+  prepareNote();
+  Serial.printf("[SESSION] Category: %s  |  Attempt #%d  |  Note: %s\n", sessionLabels[sessionMode],
+                attemptNumber, noteClean[0] ? noteClean : "(none)");
   Serial.printf("[SESSION] Confirming via %d tone(s)/blink(s)...\n", sessionMode + 1);
 
   // --- Signal: category confirmed, audio and visual in agreement ---
   signalCategoryConfirm(sessionMode + 1);
 
-  // --- Upright reference: bike must be upright and still here ---
+  // --- Upright reference: bike upright and steady (engine may run) ---
   delay(300);
   captureUprightReference();
   Serial.printf("[INIT] Upright reference captured (%.3f, %.3f, %.3f).\n", upX, upY, upZ);
   Serial.printf("[INIT] At rest: linear %.4f g (offset), spread %.4f g (noise/vibration).\n",
                 restBiasG, restNoiseG);
+  checkMountPosition();
 
   // --- Signal: test window starting ---
   signalStartingNow();

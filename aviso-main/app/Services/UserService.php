@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserService
 {
@@ -82,13 +84,21 @@ class UserService
 
     public function updateUser(User $user, array $data): bool
     {
-        if (!empty($data['password'])) {
+        $passwordChanged = !empty($data['password']);
+
+        if ($passwordChanged) {
             $data['password'] = Hash::make($data['password']);
         } else {
             unset($data['password']);
         }
         $data = $this->computeAddress($data);
-        return $user->update($data);
+        $updated = $user->update($data);
+
+        if ($passwordChanged) {
+            $this->signOutOtherSessions($user);
+        }
+
+        return $updated;
     }
 
     public function updateAvatar(User $user, string $path): void
@@ -99,6 +109,28 @@ class UserService
     public function updatePassword(User $user, string $newPassword): void
     {
         $user->update(['password' => Hash::make($newPassword)]);
+        $this->signOutOtherSessions($user);
+    }
+
+    /**
+     * After a password change, end every other login of this account — open
+     * browser sessions and "remember me" cookies — so whoever knew the old
+     * password is kicked out. The person making the change stays signed in.
+     */
+    private function signOutOtherSessions(User $user): void
+    {
+        $user->forceFill(['remember_token' => Str::random(60)])->save();
+
+        if (config('session.driver') !== 'database') {
+            return;
+        }
+
+        $currentSessionId = Auth::id() === $user->id ? session()->getId() : null;
+
+        DB::table(config('session.table', 'sessions'))
+            ->where('user_id', $user->id)
+            ->when($currentSessionId, fn ($query) => $query->where('id', '!=', $currentSessionId))
+            ->delete();
     }
 
     private function computeAddress(array $data): array

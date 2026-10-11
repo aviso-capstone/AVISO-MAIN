@@ -11,6 +11,8 @@ import {
     Users,
     Siren,
     Activity,
+    ChevronsLeft,
+    ChevronsRight,
 } from "lucide-react";
 import {
     Sidebar,
@@ -24,6 +26,8 @@ import {
     SidebarMenuBadge,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarRail,
+    useSidebar,
 } from "@/components/ui/sidebar";
 import { useSosAlerts } from "@/components/sos/SosAlertProvider";
 import {
@@ -93,6 +97,8 @@ export default function AdminSidebar() {
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const { alerts } = useSosAlerts();
     const sosCount = alerts.length;
+    const { state, toggleSidebar } = useSidebar();
+    const collapsed = state === "collapsed";
 
     const executeLogout = () => {
         toast.setPending("info", "You have been successfully logged out.");
@@ -106,7 +112,7 @@ export default function AdminSidebar() {
     return (
         <Sidebar collapsible="icon">
             <SidebarHeader>
-                <div className="flex items-center space-x-3 p-4 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:space-x-0">
+                <div className="flex items-center space-x-3 p-4 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:pt-2 group-data-[collapsible=icon]:space-x-0">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center">
                         <img
                             src="/logo-removebg.png"
@@ -114,7 +120,7 @@ export default function AdminSidebar() {
                             className="w-full h-full object-contain rounded-lg"
                         />
                     </div>
-                    <div className="group-data-[collapsible=icon]:hidden">
+                    <div className="flex-1 group-data-[collapsible=icon]:hidden">
                         <h2 className="font-heading font-bold text-lg leading-tight">
                             Aviso
                         </h2>
@@ -122,23 +128,33 @@ export default function AdminSidebar() {
                             Admin Portal
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        onClick={toggleSidebar}
+                        title={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    >
+                        {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                    </button>
                 </div>
             </SidebarHeader>
             <SidebarContent>
                 {/* Prominent Dashboard Block */}
-                <SidebarGroup className="pb-0 mt-2 px-3">
+                <SidebarGroup className="pb-0 mt-2 px-3 group-data-[collapsible=icon]:px-2">
                     <SidebarMenu>
                         <SidebarMenuItem>
                             <SidebarMenuButton
                                 asChild
-                                className={`text-base py-4 rounded-md mb-2 transition-colors duration-200 ${
+                                tooltip="Dashboard"
+                                className={`text-base py-4 rounded-md mb-2 transition-colors duration-200 group-data-[collapsible=icon]:p-1.5! ${
                                     url === "/dashboard" || url.startsWith("/dashboard?")
                                         ? "bg-black text-white dark:bg-white dark:text-black font-semibold shadow-sm"
                                         : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                                 }`}
                             >
-                                <Link href="/dashboard" className="flex items-center">
-                                    <LayoutDashboard className="w-5 h-5 mr-3" />
+                                <Link href="/dashboard" className="flex items-center gap-3">
+                                    <LayoutDashboard className="w-5 h-5" />
                                     <span>Dashboard</span>
                                 </Link>
                             </SidebarMenuButton>
@@ -148,7 +164,7 @@ export default function AdminSidebar() {
 
                 {/* Grouped Navigation */}
                 {navGroups.map((group) => (
-                    <SidebarGroup key={group.title} className="pt-2 px-3">
+                    <SidebarGroup key={group.title} className="pt-2 px-3 group-data-[collapsible=icon]:px-2">
                         <SidebarGroupLabel className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-1">
                             {group.title}
                         </SidebarGroupLabel>
@@ -161,21 +177,29 @@ export default function AdminSidebar() {
                                         <SidebarMenuItem key={item.title}>
                                             <SidebarMenuButton
                                                 asChild
-                                                className={`text-base py-4 rounded-md my-0.5 ${
+                                                tooltip={item.title}
+                                                className={`text-base py-4 rounded-md my-0.5 group-data-[collapsible=icon]:p-1.5! ${
                                                     isActive
                                                         ? "bg-black text-white dark:bg-white dark:text-black font-semibold shadow-sm"
                                                         : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                                                 }`}
                                             >
-                                                <Link href={item.url} className="flex items-center">
-                                                    <item.icon className="w-5 h-5 mr-3" />
+                                                <Link href={item.url} className="flex items-center gap-3">
+                                                    <item.icon className="w-5 h-5" />
                                                     <span>{item.title}</span>
                                                 </Link>
                                             </SidebarMenuButton>
                                             {showSosCount ? (
-                                                <SidebarMenuBadge className="bg-red-500 text-white font-bold">
-                                                    {sosCount}
-                                                </SidebarMenuBadge>
+                                                <>
+                                                    <SidebarMenuBadge className="bg-red-500 text-white font-bold">
+                                                        {sosCount}
+                                                    </SidebarMenuBadge>
+                                                    {/* The badge is hidden in icon mode; a red dot keeps an active SOS visible. */}
+                                                    <span
+                                                        aria-hidden
+                                                        className="pointer-events-none absolute top-0.5 right-0.5 hidden h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 ring-2 ring-sidebar group-data-[collapsible=icon]:block"
+                                                    />
+                                                </>
                                             ) : null}
                                         </SidebarMenuItem>
                                     );
@@ -186,10 +210,10 @@ export default function AdminSidebar() {
                 ))}
             </SidebarContent>
             
-            <SidebarFooter className="p-4 border-t border-border/50">
+            <SidebarFooter className="p-4 border-t border-border/50 group-data-[collapsible=icon]:p-2">
                 {/* Admin Profile Section */}
-                <div className="flex items-center gap-3 mb-4 px-2 group-data-[collapsible=icon]:justify-center">
-                    <div className="w-10 h-10 shrink-0 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
+                <div className="flex items-center gap-3 mb-4 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" title={collapsed ? fullName : undefined}>
+                    <div className="w-10 h-10 shrink-0 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:text-sm">
                         {initial}
                     </div>
                     <div className="flex flex-col group-data-[collapsible=icon]:hidden">
@@ -202,7 +226,8 @@ export default function AdminSidebar() {
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             asChild
-                            className="bg-destructive text-white hover:bg-destructive/90 hover:text-white font-semibold text-base py-5 rounded-md cursor-pointer justify-center group-data-[collapsible=icon]:justify-center transition-colors"
+                            tooltip="Log Out"
+                            className="bg-destructive text-white hover:bg-destructive/90 hover:text-white font-semibold text-base py-5 rounded-md cursor-pointer justify-center group-data-[collapsible=icon]:p-1.5! group-data-[collapsible=icon]:justify-center transition-colors"
                         >
                             <a onClick={() => setIsLogoutModalOpen(true)} className="flex items-center w-full justify-center">
                                 <LogOut className="w-5 h-5 group-data-[collapsible=icon]:mr-0 mr-2" />
@@ -232,6 +257,7 @@ export default function AdminSidebar() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            <SidebarRail />
         </Sidebar>
     );
 }

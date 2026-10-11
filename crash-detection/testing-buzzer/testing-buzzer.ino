@@ -1,11 +1,17 @@
 // ============================================================
-// AVISO — Buzzer Maximum Volume Diagnostic Test (30 seconds)
-// Purpose: sweep through frequencies to find the buzzer's
-// loudest resonant point, then hold there to confirm. No
-// sensor, no LittleFS, no calibration — buzzer only.
-// IMPORTANT: tone() controls frequency/duration only, NOT
-// volume. This test finds the loudest-SOUNDING frequency by
-// resonance, it cannot exceed the buzzer's physical power limit.
+// AVISO — Buzzer Loudness Test  (30 s, buzzer only)
+// ------------------------------------------------------------
+// Finds the frequency at which this passive buzzer sounds
+// loudest (its resonance). tone() sets pitch, not volume, so the
+// only way to get more sound is to play at that frequency.
+// No sensor, storage or calibration is used.
+//
+//   0-10 s   sweep 300-5000 Hz: listen where it gets louder
+//   10-22 s  hold 2000 / 2500 / 3000 / 3500 Hz, 3 s each
+//   22-30 s  hold 3000 Hz
+//
+// Use the loudest Phase 2 frequency for alert tones. Result so
+// far: 2000 Hz (used by threshold-gathering and calibration).
 // ============================================================
 
 #define BUZZER_PIN 4

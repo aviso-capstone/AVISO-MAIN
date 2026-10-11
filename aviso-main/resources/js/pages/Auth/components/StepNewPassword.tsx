@@ -21,7 +21,7 @@ interface Props {
     onSuccess?: () => void;
 }
 
-export function StepNewPassword({ email, token, onSuccess }: Props) {
+export function StepNewPassword({ token, onSuccess }: Props) {
     const [password, setPassword] = useState("");
     const [confirmation, setConfirmation] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -44,8 +44,8 @@ export function StepNewPassword({ email, token, onSuccess }: Props) {
 
         setLoading(true);
         try {
+            // The email travels inside the signed token URL, not the body.
             await axios.post(token, {
-                email,
                 password,
                 password_confirmation: confirmation,
             });

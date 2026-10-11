@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Password Reset OTP</title>
+    <title>AVISO Admin Console — Password Reset</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -38,6 +38,25 @@
             color: #a1a1aa;
             margin-top: 6px;
             font-weight: 500;
+        }
+        .badge {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            background-color: #27272a;
+            color: #fafafa;
+            border: 1px solid #3f3f46;
+        }
+        .where {
+            font-size: 14px;
+            color: #d4d4d8;
+            line-height: 1.6;
+            text-align: center;
+            margin-bottom: 24px;
         }
         .body {
             padding: 32px 40px;
@@ -109,13 +128,14 @@
         <div class="header">
             <div class="logo">AVISO</div>
             <div class="tagline">Road Hazard Detection System</div>
+            <div class="badge">Admin Console</div>
         </div>
 
         <div class="body">
             <p class="greeting">
-                We received a request to reset the password for the admin account
-                associated with <strong>{{ $email }}</strong>. Use the code below
-                to verify your identity and set a new password.
+                Hi <strong>{{ $firstName }}</strong>,<br><br>
+                We received a request to reset the password for your
+                <strong>AVISO Admin Console</strong> account ({{ $email }}).
             </p>
 
             <div class="otp-label">Your One-Time Password</div>
@@ -124,9 +144,14 @@
                 <div class="otp-expiry">Valid for 10 minutes</div>
             </div>
 
+            <p class="where">
+                Enter this code on the <strong>admin website's</strong> Forgot Password page.
+            </p>
+
             <div class="warning">
                 ⚠️ Never share this code with anyone. The AVISO team will never ask for your OTP.
-                If you did not request a password reset, you can safely ignore this email.
+                If you did not request a password reset, someone may be trying to get into an
+                admin account. Your password has not been changed, but consider changing it.
             </div>
         </div>
 

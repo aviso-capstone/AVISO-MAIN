@@ -24,8 +24,8 @@ export function StepEmail({ onSuccess }: Props) {
         try {
             await axios.post(route("password.send-otp"), { email });
             toast.success({
-                title: "OTP Sent!",
-                description: `A 6-digit code was sent to ${email}`,
+                title: "Check your email",
+                description: `If ${email} belongs to an admin account, a 6-digit code was sent to it.`,
             });
             onSuccess(email);
         } catch (err: any) {

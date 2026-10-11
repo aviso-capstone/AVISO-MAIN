@@ -1,12 +1,14 @@
 // ============================================================
-// AVISO — Real-World Deployment Logger (Field-Hardened)
+// AVISO — Early Field Logger  (SUPERSEDED, kept for reference)
 // ------------------------------------------------------------
-// Senses and logs continuously. Loads calibration instantly
-// from flash (no manual six-position wait). Fires a local
-// buzzer/black-box safety net on extreme motion, as a backup
-// independent of the phone's WiFi link. Runs correctly with
-// no laptop attached.
+// Replaced by aviso-iot (field firmware) for riding and by
+// threshold-gathering for data collection. Not used any more.
+//
+// What it did: logged the BNO055 continuously with calibration
+// loaded from EEPROM, and sounded a local buzzer / black-box
+// safety net on extreme motion, independent of the Wi-Fi link.
 // ============================================================
+
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
@@ -30,9 +32,8 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);
 #define INIT_RETRY_ATTEMPTS 3
 #define INIT_RETRY_DELAY_MS 500
 
-// Local safety-net trigger only — NOT the authoritative crash
-// decision (that lives on the phone, Process 4.0). Placeholders
-// pending real drop-rig calibration data.
+// Local safety-net trigger only (placeholder values, never
+// calibrated). The crash decision now lives in aviso-iot.
 const float LOCAL_SAFETY_ACCEL_THRESHOLD = 25.0;
 const float LOCAL_SAFETY_ORIENT_THRESHOLD = 45.0;
 const int CONSECUTIVE_READINGS_REQUIRED = 4;

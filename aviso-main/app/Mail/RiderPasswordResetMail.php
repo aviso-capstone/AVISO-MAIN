@@ -20,7 +20,7 @@ class RiderPasswordResetMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'AVISO — Reset Your Password',
+            subject: 'AVISO Rider App — Password Reset Code',
         );
     }
 
