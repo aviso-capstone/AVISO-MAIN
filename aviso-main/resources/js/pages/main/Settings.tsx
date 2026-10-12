@@ -6,27 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { User, SystemSetting } from '@/types/models';
-import { Sun, Moon, Monitor, User as UserIcon, Shield, Settings2, AlertTriangle } from 'lucide-react';
+import { User } from '@/types/models';
+import { Sun, Moon, Monitor, User as UserIcon, Shield } from 'lucide-react';
 import { AddressFields, type AddressValue } from '@/pages/main/components/users/AddressFields';
 import { sanitizeText, sanitizeAlphanumeric } from '@/lib/sanitize';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-
-interface SettingsProps {
-    systemSettings: SystemSetting;
-}
-
-const ALL_HAZARD_TYPES = [
-    { value: 'Pothole',               label: 'Pothole',               emergency: true  },
-    { value: 'Road Excavation',       label: 'Road Excavation',       emergency: true  },
-    { value: 'Road Barrier',          label: 'Road Barrier',          emergency: true  },
-];
 
 const MAP_THEMES = [
     { value: 'day',   label: 'Day'   },
@@ -35,16 +21,7 @@ const MAP_THEMES = [
     { value: 'dawn',  label: 'Dawn'  },
 ] as const;
 
-const SORT_OPTIONS = [
-    { value: 'detected_at', label: 'Detection Time' },
-    { value: 'confidence',  label: 'Confidence'     },
-    { value: 'distance',    label: 'Distance'       },
-    { value: 'type',        label: 'Type'           },
-    { value: 'area',        label: 'Area'           },
-    { value: 'haz_code',    label: 'Hazard Code'    },
-];
-
-export default function Settings({ systemSettings }: SettingsProps) {
+export default function Settings() {
     const { props } = usePage<{ auth: { user: User } }>();
     const user = props.auth.user;
     const { resolvedTheme, setTheme } = useTheme();
@@ -92,31 +69,6 @@ export default function Settings({ systemSettings }: SettingsProps) {
         });
     };
 
-    // ── System settings form ────────────────────────────────────
-    const systemForm = useForm({
-        confidence_threshold:   systemSettings.confidence_threshold,
-        items_per_page:         systemSettings.items_per_page,
-        default_sort:           systemSettings.default_sort,
-        emergency_hazard_types: systemSettings.emergency_hazard_types,
-    });
-
-    const toggleEmergencyType = (type: string) => {
-        const current = systemForm.data.emergency_hazard_types;
-        const updated = current.includes(type)
-            ? current.filter(t => t !== type)
-            : [...current, type];
-        systemForm.setData('emergency_hazard_types', updated);
-    };
-
-    const submitSystem = (e: FormEvent) => {
-        e.preventDefault();
-        systemForm.post(route('settings.system'), {
-            preserveScroll: true,
-            onSuccess: () => toast.success('Settings saved successfully'),
-            onError: () => toast.error('Failed to save settings'),
-        });
-    };
-
     // ── Map theme (localStorage) ────────────────────────────────
     const savedMapTheme = (localStorage.getItem('aviso_map_theme') ?? 'day') as typeof MAP_THEMES[number]['value'];
 
@@ -130,22 +82,16 @@ export default function Settings({ systemSettings }: SettingsProps) {
 
             <div className="mb-6">
                 <h1 className="text-3xl font-heading font-bold tracking-tight">Settings</h1>
-                <p className="text-muted-foreground mt-1">Manage your profile, appearance, and system configuration.</p>
+                <p className="text-muted-foreground mt-1">Manage your profile and appearance.</p>
             </div>
 
             <Tabs defaultValue="profile" className="space-y-6">
-                <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+                <TabsList className="grid grid-cols-2 w-full max-w-sm">
                     <TabsTrigger value="profile" className="gap-2">
                         <UserIcon className="w-4 h-4" /> Profile
                     </TabsTrigger>
                     <TabsTrigger value="appearance" className="gap-2">
                         <Sun className="w-4 h-4" /> Appearance
-                    </TabsTrigger>
-                    <TabsTrigger value="hazards" className="gap-2">
-                        <Settings2 className="w-4 h-4" /> Hazard Log
-                    </TabsTrigger>
-                    <TabsTrigger value="emergency" className="gap-2">
-                        <AlertTriangle className="w-4 h-4" /> Emergency
                     </TabsTrigger>
                 </TabsList>
 
@@ -377,142 +323,6 @@ export default function Settings({ systemSettings }: SettingsProps) {
                     </Card>
                 </TabsContent>
 
-                {/* ── HAZARD LOG TAB ──────────────────────────────────── */}
-                <TabsContent value="hazards">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Hazard Log Defaults</CardTitle>
-                            <CardDescription>Control how hazard data is filtered and displayed in the log.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={submitSystem} className="space-y-8">
-                                {/* Confidence threshold */}
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <Label>Minimum Confidence Threshold</Label>
-                                            <p className="text-xs text-muted-foreground mt-0.5">Only show hazards at or above this confidence level.</p>
-                                        </div>
-                                        <span className="font-mono font-bold text-lg tabular-nums text-primary">
-                                            {systemForm.data.confidence_threshold}%
-                                        </span>
-                                    </div>
-                                    <Slider
-                                        value={[systemForm.data.confidence_threshold]}
-                                        onValueChange={([val]) => systemForm.setData('confidence_threshold', val)}
-                                        min={0}
-                                        max={100}
-                                        step={5}
-                                        className="max-w-md"
-                                    />
-                                    <div className="flex justify-between text-[10px] text-muted-foreground max-w-md">
-                                        <span>0% (show all)</span>
-                                        <span>100%</span>
-                                    </div>
-                                </div>
-
-                                <Separator />
-
-                                {/* Items per page */}
-                                <div className="flex items-center justify-between max-w-md">
-                                    <div>
-                                        <Label>Items Per Page</Label>
-                                        <p className="text-xs text-muted-foreground mt-0.5">Default number of rows shown in the hazard log table.</p>
-                                    </div>
-                                    <Select
-                                        value={String(systemForm.data.items_per_page)}
-                                        onValueChange={val => systemForm.setData('items_per_page', Number(val))}
-                                    >
-                                        <SelectTrigger className="w-24">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {[10, 15, 25, 50].map(n => (
-                                                <SelectItem key={n} value={String(n)}>{n} rows</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <Separator />
-
-                                {/* Default sort */}
-                                <div className="flex items-center justify-between max-w-md">
-                                    <div>
-                                        <Label>Default Sort</Label>
-                                        <p className="text-xs text-muted-foreground mt-0.5">Column the hazard log sorts by on first load.</p>
-                                    </div>
-                                    <Select
-                                        value={systemForm.data.default_sort}
-                                        onValueChange={val => systemForm.setData('default_sort', val)}
-                                    >
-                                        <SelectTrigger className="w-40">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {SORT_OPTIONS.map(opt => (
-                                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="flex justify-end">
-                                    <Button type="submit" disabled={systemForm.processing}>
-                                        {systemForm.processing ? 'Saving…' : 'Save Hazard Settings'}
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* ── EMERGENCY TAB ───────────────────────────────────── */}
-                <TabsContent value="emergency">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Emergency Alert Rules</CardTitle>
-                            <CardDescription>
-                                Select which hazard types can trigger emergency SOS markers on the Live Map.
-                                Only physical road hazards should trigger emergency alerts.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={submitSystem} className="space-y-6">
-                                <div className="space-y-4 max-w-sm">
-                                    {ALL_HAZARD_TYPES.map(({ value, label, emergency }) => (
-                                        <div key={value} className="flex items-center justify-between py-2">
-                                            <div>
-                                                <p className="text-sm font-medium">{label}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {emergency ? 'Physical road hazard' : 'Informational only'}
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                checked={systemForm.data.emergency_hazard_types.includes(value)}
-                                                onCheckedChange={() => toggleEmergencyType(value)}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {systemForm.errors.emergency_hazard_types && (
-                                    <p className="text-xs text-destructive">{systemForm.errors.emergency_hazard_types}</p>
-                                )}
-
-                                <p className="text-xs text-muted-foreground">
-                                    At least one hazard type must remain enabled.
-                                </p>
-
-                                <div className="flex justify-end">
-                                    <Button type="submit" disabled={systemForm.processing}>
-                                        {systemForm.processing ? 'Saving…' : 'Save Emergency Rules'}
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
             </Tabs>
         </>
     );
