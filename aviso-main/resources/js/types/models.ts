@@ -17,14 +17,6 @@ export interface User {
     updated_at?: string;
 }
 
-export interface SystemSetting {
-    id: number;
-    confidence_threshold: number;
-    items_per_page: number;
-    default_sort: string;
-    emergency_hazard_types: string[];
-}
-
 export interface HazardLog {
     id: number;
     haz_code: string;

@@ -24,7 +24,6 @@ Route::middleware('web')->group(function () {
 
         Route::get('/map', function (\Illuminate\Http\Request $request) {
             $activeHazards = \App\Models\HazardLog::where('status', 'active')->get();
-            $settings = \App\Models\SystemSetting::instance();
 
             $focusAlert = null;
             if ($request->filled('alert')) {
@@ -41,7 +40,6 @@ Route::middleware('web')->group(function () {
             // and it deliberately loads any alert by id regardless of status.
             return Inertia::render('main/MapPage', [
                 'hazards'               => $activeHazards,
-                'emergencyHazardTypes'  => $settings->emergency_hazard_types,
                 'focusAlert'            => $focusAlert,
             ]);
         })->name('map');
@@ -53,7 +51,6 @@ Route::middleware('web')->group(function () {
         Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
         Route::post('/settings/profile', [\App\Http\Controllers\Admin\SettingsController::class, 'updateProfile'])->name('settings.profile');
         Route::post('/settings/password', [\App\Http\Controllers\Admin\SettingsController::class, 'updatePassword'])->name('settings.password');
-        Route::post('/settings/system', [\App\Http\Controllers\Admin\SettingsController::class, 'updateSystem'])->name('settings.system');
         
         // Users Management
         Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('users.index');

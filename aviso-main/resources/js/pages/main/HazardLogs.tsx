@@ -53,7 +53,7 @@ export default function HazardLogs({ hazards, stats, areaCounts, filters, types,
                 <div>
                     <h1 className="text-3xl font-heading font-bold tracking-tight">Hazard Logs</h1>
                     <p className="text-muted-foreground mt-1">
-                        Historical and active detections from edge devices.
+                        All road hazards detected by riders, past and active.
                     </p>
                 </div>
                 <DropdownMenu>
