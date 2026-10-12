@@ -38,6 +38,9 @@ class RiderEvent extends Model
 
     const SOURCE_IOT = 'iot';
 
+    /** Date filters pick whole Philippine days (the database stores UTC). */
+    const DAY_TIMEZONE = 'Asia/Manila';
+
     /** Readable names, also used in exports. */
     const TYPE_LABELS = [
         self::TYPE_NORMAL => 'Normal riding',
@@ -97,7 +100,7 @@ class RiderEvent extends Model
     public function scopeDetectedBetween(Builder $query, ?string $from, ?string $to): Builder
     {
         return $query
-            ->when($from, fn (Builder $q) => $q->where('detected_at', '>=', Carbon::parse($from)->startOfDay()))
-            ->when($to, fn (Builder $q) => $q->where('detected_at', '<=', Carbon::parse($to)->endOfDay()));
+            ->when($from, fn (Builder $q) => $q->where('detected_at', '>=', Carbon::parse($from, self::DAY_TIMEZONE)->startOfDay()->utc()))
+            ->when($to, fn (Builder $q) => $q->where('detected_at', '<=', Carbon::parse($to, self::DAY_TIMEZONE)->endOfDay()->utc()));
     }
 }

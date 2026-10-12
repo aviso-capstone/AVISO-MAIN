@@ -27,6 +27,8 @@ interface PageProps {
         type?: string;
         barangay?: string;
         status?: string;
+        from?: string;
+        to?: string;
     };
     types: string[];
     barangays: Barangay[];
