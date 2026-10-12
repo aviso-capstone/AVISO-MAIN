@@ -198,7 +198,7 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                 <div className="flex min-w-0 items-baseline gap-3">
                     <h1 className="text-2xl font-heading font-bold tracking-tight">Live Map Tracker</h1>
                     <p className="hidden truncate text-sm text-muted-foreground lg:block">
-                        Monitor real-time road hazards and system edge devices.
+                        Monitor road hazards, riders and SOS alerts in real time.
                     </p>
                 </div>
                 <RealTimeClock />

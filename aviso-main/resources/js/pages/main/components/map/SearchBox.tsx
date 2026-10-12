@@ -62,14 +62,14 @@ export function SearchBox() {
             .setLngLat([longitude, latitude])
             .setPopup(new mapboxgl.Popup({ offset: 24, closeButton: false }).setText(label))
             .addTo(map);
-        map.flyTo({ center: [longitude, latitude], zoom: 17 });
+        map.flyTo({ center: [longitude, latitude], zoom: 17, duration: 1500, essential: true });
         setQuery(label);
     };
 
     const flyTo = (feature: PlaceResult) => {
         if (!map) return;
         removePin();
-        map.flyTo({ center: feature.center, zoom: 15 });
+        map.flyTo({ center: feature.center, zoom: 15, duration: 1500, essential: true });
         setResults([]);
         setQuery(feature.place_name);
     };
