@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -115,6 +116,17 @@ class HazardLog extends Model
             self::TYPE_ROAD_BARRIER,
             self::TYPE_ROAD_EXCAVATION,
         ]);
+    }
+
+    /**
+     * Scope: detected between two calendar days (inclusive, e.g. Oct 12 – Oct 12
+     * is that whole day). Days are Philippine days; the database stores UTC.
+     */
+    public function scopeDetectedBetween(Builder $query, ?string $from, ?string $to): Builder
+    {
+        return $query
+            ->when($from, fn (Builder $q) => $q->where('detected_at', '>=', Carbon::parse($from, self::CODE_TIMEZONE)->startOfDay()->utc()))
+            ->when($to, fn (Builder $q) => $q->where('detected_at', '<=', Carbon::parse($to, self::CODE_TIMEZONE)->endOfDay()->utc()));
     }
 
     /** Scope: search by haz_code or rider_code */

@@ -37,6 +37,8 @@ class HazardLogService
             $query->byBarangay($filters['barangay']);
         }
 
+        $query->detectedBetween($filters['from'] ?? null, $filters['to'] ?? null);
+
         return $query;
     }
 

@@ -2,7 +2,11 @@ import { useState } from "react";
 import { router } from "@inertiajs/react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format, parseISO } from "date-fns";
+import { type DateRange } from "react-day-picker";
 import {
     Table,
     TableBody,
@@ -27,6 +31,8 @@ import {
     Construction,
     ChevronLeft,
     ChevronRight,
+    CalendarDays,
+    X,
 } from "lucide-react";
 import { type Barangay, type HazardLog, type PaginatedData } from "@/types/models";
 import { cameraDistanceLabel, getHazardTailwindColors } from "@/lib/hazards";
@@ -38,6 +44,9 @@ interface HazardTableProps {
         type?: string;
         barangay?: string;
         status?: string;
+        /** Calendar days, yyyy-MM-dd (Philippine days on the server). */
+        from?: string;
+        to?: string;
     };
     types: string[];
     barangays: Barangay[];
@@ -146,7 +155,17 @@ export function HazardTable({
                         </SelectContent>
                     </Select>
 
-
+                    <DateRangeFilter
+                        from={filters.from}
+                        to={filters.to}
+                        onChange={(from, to) =>
+                            router.get(
+                                route("hazards.index"),
+                                { ...filters, search: searchQuery, from, to },
+                                { preserveState: true, preserveScroll: true },
+                            )
+                        }
+                    />
                 </div>
             </div>
 
@@ -343,5 +362,71 @@ export function HazardTable({
                 </div>
             )}
         </Card>
+    );
+}
+
+interface DateRangeFilterProps {
+    from?: string;
+    to?: string;
+    onChange: (from: string | undefined, to: string | undefined) => void;
+}
+
+/**
+ * Date filter built from the shared Calendar (range mode) in a Popover. One click picks a
+ * single day (e.g. Oct 12 – Oct 12); a second click extends it to a range.
+ */
+function DateRangeFilter({ from, to, onChange }: DateRangeFilterProps) {
+    const selected: DateRange | undefined = from
+        ? { from: parseISO(from), to: to ? parseISO(to) : parseISO(from) }
+        : undefined;
+
+    const label = !from
+        ? "All dates"
+        : !to || to === from
+          ? format(parseISO(from), "MMM d, yyyy")
+          : `${format(parseISO(from), "MMM d")} – ${format(parseISO(to), "MMM d, yyyy")}`;
+
+    const select = (range: DateRange | undefined) => {
+        if (!range?.from) {
+            onChange(undefined, undefined);
+            return;
+        }
+        const day = format(range.from, "yyyy-MM-dd");
+        onChange(day, range.to ? format(range.to, "yyyy-MM-dd") : day);
+    };
+
+    return (
+        <div className="flex items-center gap-1">
+            <Popover>
+                {/* Trigger renders its own button: Button can't pass the ref the popover needs on React 18. */}
+                <PopoverTrigger
+                    className={buttonVariants({ variant: "outline", className: "w-[210px] justify-start bg-background font-normal" })}
+                    aria-label="Filter by date"
+                >
+                    <CalendarDays className="w-4 h-4" />
+                    {label}
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                        mode="range"
+                        selected={selected}
+                        onSelect={select}
+                        defaultMonth={selected?.from}
+                        numberOfMonths={1}
+                        disabled={{ after: new Date() }}
+                    />
+                </PopoverContent>
+            </Popover>
+            {from && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Clear date filter"
+                    onClick={() => onChange(undefined, undefined)}
+                >
+                    <X className="w-4 h-4" />
+                </Button>
+            )}
+        </div>
     );
 }

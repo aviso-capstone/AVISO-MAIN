@@ -14,7 +14,7 @@ const LINE_LAYER = "barangay-boundaries-line";
 const LABEL_LAYER = "barangay-boundaries-label";
 const LAYER_IDS = [FILL_LAYER, LINE_LAYER, LABEL_LAYER];
 
-type BarangayProperties = { psgc_code: string; name: string };
+type BarangayProperties = { psgc_code: string; name: string; hazard_count?: number };
 type BarangayCollection = FeatureCollection<Polygon | MultiPolygon, BarangayProperties>;
 
 interface BarangayBoundariesProps {
@@ -30,7 +30,7 @@ export function BarangayBoundaries({ visible, hazards, theme }: BarangayBoundari
 
     const isDark = theme === "night" || theme === "dusk";
 
-    // Active hazards per barangay, for the click popup.
+    // Active hazards per barangay, for the labels and the click popup.
     const hazardCounts = useMemo(() => {
         const counts = new Map<string, number>();
         for (const h of hazards) {
@@ -40,6 +40,20 @@ export function BarangayBoundaries({ visible, hazards, theme }: BarangayBoundari
     }, [hazards]);
     const hazardCountsRef = useRef(hazardCounts);
     hazardCountsRef.current = hazardCounts;
+
+    // Outlines with each barangay's count attached, so the label can show it.
+    const labelledBoundaries = useMemo<BarangayCollection | null>(() => {
+        if (!boundaries) return null;
+        return {
+            ...boundaries,
+            features: boundaries.features.map((f) => ({
+                ...f,
+                properties: { ...f.properties, hazard_count: hazardCounts.get(f.properties.psgc_code) ?? 0 },
+            })),
+        };
+    }, [boundaries, hazardCounts]);
+    const labelledBoundariesRef = useRef(labelledBoundaries);
+    labelledBoundariesRef.current = labelledBoundaries;
 
     useEffect(() => {
         let cancelled = false;
@@ -60,7 +74,7 @@ export function BarangayBoundaries({ visible, hazards, theme }: BarangayBoundari
         if (!map || !isLoaded || !boundaries) return;
 
         if (!map.getSource(SOURCE_ID)) {
-            map.addSource(SOURCE_ID, { type: "geojson", data: boundaries, promoteId: "psgc_code" });
+            map.addSource(SOURCE_ID, { type: "geojson", data: labelledBoundariesRef.current ?? boundaries, promoteId: "psgc_code" });
         }
 
         if (!map.getLayer(FILL_LAYER)) {
@@ -98,7 +112,20 @@ export function BarangayBoundaries({ visible, hazards, theme }: BarangayBoundari
                 source: SOURCE_ID,
                 minzoom: 12.5,
                 layout: {
-                    "text-field": ["get", "name"],
+                    // Name, plus "3 active hazards" in red underneath when there are any.
+                    "text-field": [
+                        "case",
+                        [">", ["get", "hazard_count"], 0],
+                        [
+                            "format",
+                            ["get", "name"], {},
+                            "\n", {},
+                            ["concat", ["to-string", ["get", "hazard_count"]],
+                                ["case", ["==", ["get", "hazard_count"], 1], " active hazard", " active hazards"]],
+                            { "text-color": "#dc2626", "font-scale": 0.9 },
+                        ],
+                        ["get", "name"],
+                    ],
                     "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 11, 16, 14],
                     "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
                     "symbol-placement": "point",
@@ -169,6 +196,13 @@ export function BarangayBoundaries({ visible, hazards, theme }: BarangayBoundari
             }
         };
     }, [map, isLoaded, boundaries]);
+
+    // New or resolved hazards: refresh the counts in place.
+    useEffect(() => {
+        if (!map || !isLoaded || !labelledBoundaries) return;
+        const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        source?.setData(labelledBoundaries);
+    }, [map, isLoaded, labelledBoundaries]);
 
     // Show / hide without rebuilding the layers.
     useEffect(() => {
