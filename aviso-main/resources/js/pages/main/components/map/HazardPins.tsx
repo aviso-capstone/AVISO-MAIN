@@ -11,12 +11,22 @@ const CLUSTER_MAX_ZOOM = 15;
 // ~10 m — far enough apart to click each stacked hazard once zoomed in.
 const DUPLICATE_SPREAD_DEG = 0.00009;
 
+// Fixed rows for the "Visible on screen" strip: always all three, zeros included,
+// so it never changes size while the admin pans or zooms.
+const VISIBLE_TYPES: { type: string; label: string }[] = [
+    { type: 'Pothole', label: 'Potholes' },
+    { type: 'Road Excavation', label: 'Excavations' },
+    { type: 'Road Barrier', label: 'Barriers' },
+];
+
 interface HazardPinsProps {
     hazards?: HazardLog[];
     theme?: 'day' | 'night' | 'dusk' | 'dawn';
+    /** Hide the "Visible on screen" strip, e.g. while an SOS panel needs the space. */
+    hideStats?: boolean;
 }
 
-export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
+export function HazardPins({ hazards = [], theme = 'day', hideStats = false }: HazardPinsProps) {
     const { map } = useMap();
     const [bounds, setBounds] = useState<any>(null);
     const [zoom, setZoom] = useState(14);
@@ -32,13 +42,14 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
             }
         };
 
+        // Only once the map stops moving: updating on every frame re-clustered and
+        // re-rendered every pin ~60 times a second while zooming, which made the map
+        // stutter. Pins still follow the map smoothly; grouping refreshes at the end.
         updateBounds();
-        map.on('move', updateBounds);
-        map.on('zoom', updateBounds);
-        
+        map.on('moveend', updateBounds);
+
         return () => {
-            map.off('move', updateBounds);
-            map.off('zoom', updateBounds);
+            map.off('moveend', updateBounds);
         };
     }, [map]);
 
@@ -92,24 +103,20 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
         options: { radius: CLUSTER_RADIUS_PX, maxZoom: CLUSTER_MAX_ZOOM }
     });
 
-    const viewportStats = useMemo(() => {
-        if (!bounds) return [];
-        const [w, s, e, n] = bounds;
-        
+    const viewportCounts = useMemo(() => {
         const counts: Record<string, number> = {};
-        let total = 0;
+        if (!bounds) return counts;
+        const [w, s, e, n] = bounds;
 
         points.forEach(p => {
             const [lng, lat] = p.geometry.coordinates;
             if (lng >= w && lng <= e && lat >= s && lat <= n) {
                 const type = p.properties.hazardType;
                 counts[type] = (counts[type] || 0) + 1;
-                total++;
             }
         });
 
-        if (total === 0) return [];
-        return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        return counts;
     }, [points, bounds]);
 
     return (
@@ -172,21 +179,17 @@ export function HazardPins({ hazards = [], theme = 'day' }: HazardPinsProps) {
                 );
             })}
 
-            {/* Viewport Statistics Panel */}
-            {viewportStats.length > 0 && (
-                <div className="absolute bottom-8 right-14 z-10 bg-background/95 backdrop-blur shadow-lg border rounded-xl p-4 w-60">
-                    <h3 className="font-heading font-bold text-xs mb-3 text-muted-foreground uppercase tracking-wider">Visible on screen</h3>
-                    <div className="space-y-2.5">
-                        {viewportStats.map(([type, count]) => (
-                            <div key={type} className="flex justify-between items-center">
-                                <div className="flex items-center gap-2 text-sm font-medium">
-                                    <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: getHazardColor(type as any, theme) }} />
-                                    {type}
-                                </div>
-                                <span className="font-mono text-sm font-bold bg-muted/50 border px-2 py-0.5 rounded-md">{count}</span>
-                            </div>
-                        ))}
-                    </div>
+            {/* Visible on screen: one steady line at the bottom centre */}
+            {!hideStats && bounds && (
+                <div className="pointer-events-none absolute bottom-8 left-1/2 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full border bg-background/95 px-4 py-1.5 shadow-lg backdrop-blur">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visible on screen</span>
+                    {VISIBLE_TYPES.map(({ type, label }) => (
+                        <span key={type} className="flex items-center gap-1.5 text-xs font-medium">
+                            <span className="h-2.5 w-2.5 rounded-full shadow-sm" style={{ backgroundColor: getHazardColor(type as any, theme) }} />
+                            <span className="font-mono font-bold tabular-nums">{viewportCounts[type] ?? 0}</span>
+                            {label}
+                        </span>
+                    ))}
                 </div>
             )}
         </>

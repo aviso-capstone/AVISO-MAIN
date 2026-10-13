@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Rider;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Rider\SosRequest;
+use App\Models\EmergencyAlert;
 use App\Services\EmergencyAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -23,6 +24,8 @@ class EmergencyController extends Controller
             $request->longitude,
             $request->input('triggered_at'),
             $request->input('event_uid'),
+            EmergencyAlert::SOURCE_PHONE,
+            $request->input('trigger_type'),
         );
 
         return response()->json([

@@ -99,6 +99,20 @@ export interface SosAlertPayload {
     username: string;
     contact: string;
     address: string;
+    /** How the SOS started; null on alerts older than this field. */
+    trigger_type: SosTriggerType | null;
+    /** Hazard the same rider detected within 2 min before and 100 m of the SOS. */
+    hazard_before: SosHazardBefore | null;
+}
+
+export type SosTriggerType = 'manual' | 'crash_iot' | 'crash_phone';
+
+export interface SosHazardBefore {
+    haz_code: string;
+    type: string;
+    confidence: number;
+    detected_at: string | null;
+    meters_from_sos: number;
 }
 
 /** Payload of the `emergency.resolved` broadcast. */

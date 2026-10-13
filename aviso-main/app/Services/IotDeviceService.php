@@ -158,6 +158,7 @@ class IotDeviceService
             null,
             $data['event_uid'],
             EmergencyAlert::SOURCE_IOT,
+            EmergencyAlert::TRIGGER_CRASH_IOT,
         );
 
         // Also in the crash-detection log (same event_uid as the app's upload,

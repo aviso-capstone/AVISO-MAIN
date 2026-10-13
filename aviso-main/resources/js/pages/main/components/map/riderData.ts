@@ -1,4 +1,4 @@
-import { type HazardLog } from '@/types/models';
+import { type SosHazardBefore, type SosTriggerType } from '@/types/models';
 
 export type LngLat = [number, number];
 
@@ -22,7 +22,8 @@ export interface EmergencyAlert {
     coords: LngLat;
     userInfo: RiderDef['userInfo'];
     triggeredAt: string;
-    nearestHazard: HazardLog | null;
+    triggerType: SosTriggerType | null;
+    hazardBefore: SosHazardBefore | null;
     /** Only meaningful for alerts opened from history — live arrivals are
      * always freshly 'pending' so this is left undefined for them. */
     status?: string;

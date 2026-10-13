@@ -17,7 +17,7 @@ interface EmergencyHotlinesPanelProps {
 
 export function EmergencyHotlinesPanel({ onClose }: EmergencyHotlinesPanelProps) {
     return (
-        <div className="absolute bottom-8 right-3 z-10 flex max-h-[70%] w-72 flex-col rounded-xl border border-destructive/30 bg-background/98 p-4 shadow-2xl backdrop-blur">
+        <div className="absolute bottom-8 right-3 z-10 flex max-h-[calc(100%-6.5rem)] w-72 flex-col rounded-xl border border-destructive/30 bg-background/98 p-4 shadow-2xl backdrop-blur">
             {/* Header */}
             <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-2">

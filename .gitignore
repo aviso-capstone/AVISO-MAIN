@@ -32,3 +32,6 @@ yarn-error.log*
 # Local dev shortcut (npm start = serve + reverb + queue); kept out of the repo so
 # App Platform does not detect the repo root as a Node.js app.
 /package.json
+
+# Camera distance calibration work (local only)
+/camera-distance-calibration/

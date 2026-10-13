@@ -11,6 +11,8 @@ interface EmergencyRidersProps {
     hazards: HazardLog[];
     emergencies: EmergencyAlert[];
     onResolve: (id: string) => void;
+    /** Told whether a rider's SOS panel is open, so other overlays can make room. */
+    onPanelOpenChange?: (open: boolean) => void;
 }
 
 // Inject SOS keyframes once into the document head
@@ -31,7 +33,7 @@ function ensureSosKeyframes() {
     document.head.appendChild(style);
 }
 
-export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve }: EmergencyRidersProps) {
+export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve, onPanelOpenChange }: EmergencyRidersProps) {
     const { map, isLoaded } = useMap();
     const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
     const prevIdsRef = useRef<Set<string>>(new Set());
@@ -105,6 +107,11 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
     }, []);
 
     const activeEmergency = emergencies.find(e => e.id === activePanel) ?? null;
+
+    const panelOpen = activeEmergency !== null;
+    useEffect(() => {
+        onPanelOpenChange?.(panelOpen);
+    }, [panelOpen, onPanelOpenChange]);
 
     const handleResolve = (id: string) => {
         setActivePanel(null);
