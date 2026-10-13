@@ -48,10 +48,14 @@ return [
         'url' => env('SMSAPIPH_URL', 'https://smsapiph.onrender.com/api/v1/send/sms'),
     ],
 
+    // Which gateway SmsService uses: 'unisms' or 'skysms'.
+    'sms_provider' => env('SMS_PROVIDER') ?: 'unisms',
+
+    // `?:` so an empty line in .env (e.g. UNISMSAPI_URL=) still falls back to the default.
     'unismsapi' => [
         'key'       => env('UNISMSAPI_KEY'),
-        'url'       => env('UNISMSAPI_URL', 'https://unismsapi.com/api/sms'),
-        'sender_id' => env('UNISMSAPI_SENDER_ID', 'UnisoftDEV'),
+        'url'       => env('UNISMSAPI_URL') ?: 'https://unismsapi.com/api/sms',
+        'sender_id' => env('UNISMSAPI_SENDER_ID') ?: 'Unisoft',
     ],
 
     'skysms' => [
