@@ -49,6 +49,8 @@ class EmergencyAlertTriggered implements ShouldBroadcastNow
             'longitude'    => (float) $this->alert->longitude,
             'triggered_at' => $this->alert->triggered_at?->toISOString(),
             'status'       => $this->alert->status,
+            'trigger_type' => $this->alert->trigger_type,
+            'hazard_before' => $this->alert->hazardJustBefore(),
             'rider_name'   => $fullName,
             'username'     => $user?->username    ?? $this->alert->rider_code,
             'contact'      => $user?->contact_number ?? '—',

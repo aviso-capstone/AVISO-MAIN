@@ -40,6 +40,7 @@ class EmergencyAlertService
         ?string $triggeredAt = null,
         ?string $eventUid = null,
         string $source = EmergencyAlert::SOURCE_PHONE,
+        ?string $triggerType = null,
     ): EmergencyAlert {
         if ($eventUid !== null) {
             $sameCrash = EmergencyAlert::with('user')->where('event_uid', $eventUid)->first();
@@ -86,9 +87,10 @@ class EmergencyAlertService
                 'longitude'     => $lng,
                 'barangay_code' => $barangay['code'] ?? null,
                 'event_uid'     => $existing->event_uid ?? $eventUid,
+                'trigger_type'  => $existing->trigger_type ?? $triggerType,
             ]);
             $this->broadcastQuietly(new EmergencyAlertTriggered($existing));
-            $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null);
+            $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null, $existing->trigger_type);
             return $existing;
         }
 
@@ -96,6 +98,7 @@ class EmergencyAlertService
             'user_id'       => $rider->id,
             'event_uid'     => $eventUid,
             'source'        => $source,
+            'trigger_type'  => $triggerType,
             'rider_code'    => $rider->username ?? (string) $rider->id,
             'latitude'      => $lat,
             'longitude'     => $lng,
@@ -107,7 +110,7 @@ class EmergencyAlertService
         $alert->setRelation('user', $rider);
         $this->broadcastQuietly(new EmergencyAlertTriggered($alert));
 
-        $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null);
+        $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null, $triggerType);
 
         return $alert;
     }
@@ -142,7 +145,13 @@ class EmergencyAlertService
      * never delivers any message containing a URL/domain), then the static
      * emergency hotlines so contacts know exactly who else to call.
      */
-    private function notifyEmergencyContacts(User $rider, float $lat, float $lng, ?string $barangayName): void
+    private function notifyEmergencyContacts(
+        User $rider,
+        float $lat,
+        float $lng,
+        ?string $barangayName,
+        ?string $triggerType = null,
+    ): void
     {
         $fullName = self::truncate(trim("{$rider->first_name} {$rider->last_name}"), self::NAME_MAX);
         // The official barangay (from the PSGC boundaries) is the most useful
@@ -156,8 +165,16 @@ class EmergencyAlertService
 
         // Plain GPS coordinates, no URL — avoids SMS gateway link/content filters.
         $location = $address ? "near {$address} (GPS: {$latStr}, {$lngStr})" : "at GPS {$latStr}, {$lngStr}";
+        // The first words tell contacts how the SOS started. Worst case (manual,
+        // max-length name + address) is 155 chars, still one SMS.
+        $opening = match ($triggerType) {
+            EmergencyAlert::TRIGGER_MANUAL => "AVISO SOS: {$fullName} reported an emergency",
+            EmergencyAlert::TRIGGER_CRASH_IOT,
+            EmergencyAlert::TRIGGER_CRASH_PHONE => "AVISO ALERT: Possible crash - {$fullName}",
+            default => "AVISO ALERT: {$fullName} triggered an SOS",
+        };
         $message  = self::truncate(
-            "AVISO ALERT: {$fullName} triggered an SOS {$location}. Search the GPS in Google Maps.",
+            "{$opening} {$location}. Search the GPS in Google Maps.",
             self::SMS_MAX_LENGTH,
         );
 

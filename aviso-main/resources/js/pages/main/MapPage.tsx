@@ -19,7 +19,6 @@ import { toast } from '@/lib/toast';
 import { useSosAlerts } from '@/components/sos/SosAlertProvider';
 import { type HazardLog, type SosAlertPayload } from '@/types/models';
 import { type EmergencyAlert, type LngLat } from './components/map/riderData';
-import { findNearestHazard } from './components/map/riderUtils';
 
 const STYLE_STANDARD = 'mapbox://styles/mapbox/standard';
 
@@ -39,7 +38,7 @@ interface MapPageProps {
     focusAlert?: SosAlertPayload | null;
 }
 
-function toEmergencyAlert(data: SosAlertPayload, hazards: HazardLog[]): EmergencyAlert {
+function toEmergencyAlert(data: SosAlertPayload): EmergencyAlert {
     const coords: LngLat = [Number(data.longitude), Number(data.latitude)];
     const riderName = data.rider_name ?? data.rider_code;
 
@@ -61,7 +60,8 @@ function toEmergencyAlert(data: SosAlertPayload, hazards: HazardLog[]): Emergenc
             address: data.address ?? '—',
         },
         triggeredAt: data.triggered_at,
-        nearestHazard: findNearestHazard(coords, hazards),
+        triggerType: data.trigger_type ?? null,
+        hazardBefore: data.hazard_before ?? null,
         status: data.status,
     };
 }
@@ -125,18 +125,18 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
 
     // Live emergencies come from the global SOS provider, which owns the single
     // riders.live subscription and the alarm audio for the whole admin session.
-    // This page only enriches each alert with its nearest hazard for display.
+    // This page only maps each alert into the panel's display shape.
     const { alerts, resolveAlert } = useSosAlerts();
     const activeEmergencies = useMemo<EmergencyAlert[]>(
-        () => alerts.map(a => toEmergencyAlert(a, hazards)),
-        [alerts, hazards],
+        () => alerts.map(a => toEmergencyAlert(a)),
+        [alerts],
     );
 
     // A historical alert opened via an SOS Alerts "open on map" link
     // (?alert=id) — shown as a read-only record, entirely separate from the
     // live tracking state above.
     const [historicalAlert, setHistoricalAlert] = useState<EmergencyAlert | null>(
-        () => (focusAlert ? toEmergencyAlert(focusAlert, hazards) : null),
+        () => (focusAlert ? toEmergencyAlert(focusAlert) : null),
     );
     const [historicalDismissed, setHistoricalDismissed] = useState(false);
 
@@ -165,6 +165,11 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
     // opened from history is a read-only record, and treating it as an unfolding
     // emergency is what made a resolved alert look like it had come back.
     const showHotlines = activeEmergencies.length > 0 && !hotlinesDismissed;
+
+    // The "Visible on screen" strip steps aside while an SOS panel or the
+    // hotlines are up, so it never sits on top of them.
+    const [sosPanelOpen, setSosPanelOpen] = useState(false);
+    const hideVisibleStats = sosPanelOpen || showHistorical || showHotlines;
 
     const handleResolveHistorical = async () => {
         if (!historicalAlert) return;
@@ -286,12 +291,13 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                             setShowBarangays={setShowBarangays}
                         />
                         <BarangayBoundaries visible={showBarangays} hazards={hazards} theme={lightPreset} />
-                        <HazardPins hazards={filteredHazards} theme={lightPreset} />
+                        <HazardPins hazards={filteredHazards} theme={lightPreset} hideStats={hideVisibleStats} />
                         <EmergencyRiders
                             theme={lightPreset}
                             hazards={filteredHazards}
                             emergencies={activeEmergencies}
                             onResolve={resolveAlert}
+                            onPanelOpenChange={setSosPanelOpen}
                         />
                         {showHistorical && historicalAlert && (
                             <>

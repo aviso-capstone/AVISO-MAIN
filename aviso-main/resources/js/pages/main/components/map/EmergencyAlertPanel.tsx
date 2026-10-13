@@ -1,11 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, AlertTriangle, MapPin, CheckCircle2 } from 'lucide-react';
+import { X, AlertTriangle, MapPin, CheckCircle2, Hand, Siren } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { type EmergencyAlert } from './riderData';
+import { type SosTriggerType } from '@/types/models';
 import { getRiderThemeColor } from './riderUtils';
 import { getHazardTailwindColors } from '@/lib/hazards';
 import { reverseGeocode } from '@/lib/geocoding';
+
+/** How each kind of SOS is labelled. A manual SOS is a real emergency too: the
+ * rider held the button and let the countdown run, so it is never shown as "no crash". */
+const TRIGGER_INFO: Record<SosTriggerType, { label: string; detail: string; tone: 'manual' | 'crash' }> = {
+    manual: {
+        label: 'SOS — reported by rider',
+        detail: 'The rider pressed SOS. Treat it as a real emergency.',
+        tone: 'manual',
+    },
+    crash_iot: {
+        label: 'Crash detected — IoT unit',
+        detail: 'Impact and fall detected by the device.',
+        tone: 'crash',
+    },
+    crash_phone: {
+        label: 'Crash detected — phone sensor',
+        detail: 'Impact detected by the phone (IoT unit not connected).',
+        tone: 'crash',
+    },
+};
 
 interface EmergencyAlertPanelProps {
     emergency: EmergencyAlert;
@@ -22,7 +43,8 @@ interface EmergencyAlertPanelProps {
 export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHistorical = false }: EmergencyAlertPanelProps) {
     const riderColor = getRiderThemeColor(emergency.colorBase, theme);
     const isResolved = emergency.status === 'resolved';
-    const hazard = emergency.nearestHazard;
+    const hazard = emergency.hazardBefore;
+    const trigger = emergency.triggerType ? TRIGGER_INFO[emergency.triggerType] : null;
     const lng = Number(emergency.coords[0]);
     const lat = Number(emergency.coords[1]);
     const [resolvedArea, setResolvedArea] = useState<string | null>(null);
@@ -31,7 +53,7 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
         setResolvedArea(null);
         reverseGeocode(lng, lat)
             .then(area => setResolvedArea(area))
-            .catch(() => setResolvedArea(hazard?.area ?? 'Unknown'));
+            .catch(() => setResolvedArea('Unknown'));
     }, [lng, lat]);
 
     const [elapsed, setElapsed] = useState('');
@@ -57,7 +79,9 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
     }, [emergency.triggeredAt]);
 
     return (
-        <div className={`absolute bottom-8 left-3 z-10 bg-background/98 backdrop-blur shadow-2xl border rounded-xl p-4 w-80 transition-all ${
+        // Height capped to the map (minus the toolbar row above and the gap below) so the
+        // rider name and status at the top are never pushed out of view; the rest scrolls.
+        <div className={`absolute bottom-8 left-3 z-10 max-h-[calc(100%-6.5rem)] overflow-y-auto bg-background/98 backdrop-blur shadow-2xl border rounded-xl p-4 w-80 transition-all ${
             !isHistorical && !isResolved ? 'border-destructive/30' : 'border-border/60'
         }`}>
             {/* Header */}
@@ -106,6 +130,31 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
                     <div className="text-[9px] text-muted-foreground/70">{elapsed}</div>
                 </div>
             </div>
+
+            {/* How the SOS started */}
+            {trigger ? (
+                <div className={`flex items-start gap-2 mb-3 p-2.5 rounded-lg border ${
+                    trigger.tone === 'manual'
+                        ? 'bg-orange-500/10 border-orange-500/30'
+                        : 'bg-destructive/10 border-destructive/20'
+                }`}>
+                    {trigger.tone === 'manual' ? (
+                        <Hand className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-orange-600" />
+                    ) : (
+                        <Siren className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-destructive" />
+                    )}
+                    <div>
+                        <div className={`text-xs font-bold ${trigger.tone === 'manual' ? 'text-orange-600' : 'text-destructive'}`}>
+                            {trigger.label}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">{trigger.detail}</div>
+                    </div>
+                </div>
+            ) : (
+                <div className="mb-3 p-2.5 rounded-lg border border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
+                    How this SOS started was not recorded (older alert).
+                </div>
+            )}
 
             {/* Location */}
             <div className="border border-border/60 rounded-lg p-3 mb-3 bg-muted/30">
@@ -158,13 +207,13 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
                 </div>
             </div>
 
-            {/* Last Detected Hazard */}
+            {/* Hazard this rider detected just before the SOS (same rider, ≤ 2 min, ≤ 100 m) */}
             {hazard ? (
                 <div className="border border-border/60 rounded-lg p-3 mb-3 bg-muted/30">
                     <div className="flex items-center gap-1.5 mb-2">
                         <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
                         <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
-                            Likely Cause of Incident
+                            Hazard detected just before the SOS
                         </span>
                     </div>
                     <div className="flex items-center justify-between mb-2">
@@ -182,23 +231,28 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
                             <span className="text-foreground font-medium">{hazard.confidence}%</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Distance:</span>
-                            <span className="text-foreground font-medium">{hazard.distance}m</span>
+                            <span>From SOS spot:</span>
+                            <span className="text-foreground font-medium">{hazard.meters_from_sos} m</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span>Detected:</span>
-                            <span className="text-foreground font-medium">
-                                {new Date(hazard.detected_at).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                })}
-                            </span>
-                        </div>
+                        {hazard.detected_at && (
+                            <div className="flex justify-between">
+                                <span>Detected:</span>
+                                <span className="text-foreground font-medium">
+                                    {new Date(hazard.detected_at).toLocaleTimeString('en-PH', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                    })}
+                                    {' '}
+                                    ({Math.max(0, Math.round((triggeredDate.getTime() - new Date(hazard.detected_at).getTime()) / 1000))} s before)
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : (
                 <div className="border border-border/60 rounded-lg p-3 mb-3 bg-muted/30 text-xs text-muted-foreground text-center">
-                    No nearby hazards in the log.
+                    No hazard detected right before the SOS.
                 </div>
             )}
 
