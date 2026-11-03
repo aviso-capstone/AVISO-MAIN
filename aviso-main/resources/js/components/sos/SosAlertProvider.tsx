@@ -16,12 +16,25 @@ import {
     type SosAlertPayload,
     type SosAlertResolvedPayload,
 } from '@/types/models';
+import {
+    type DispatchFormData,
+    type ResolveFormData,
+} from '@/pages/main/components/sos/dispatchOptions';
+
+/** Replace one alert in the list by id (no-op if it is not there). */
+function replaceAlert(list: SosAlertPayload[], next: SosAlertPayload): SosAlertPayload[] {
+    return list.map(a => (a.id === next.id ? { ...a, ...next } : a));
+}
 
 interface SosAlertContextValue {
     /** Every SOS alert still awaiting resolution, newest first. */
     alerts: SosAlertPayload[];
-    /** Mark one resolved. Clears it locally first, restores it if the request fails. */
-    resolveAlert: (id: string | number) => Promise<void>;
+    /** Step 2: help dispatched. Rejects (with the server error) if it fails. */
+    dispatchAlert: (id: string | number, data: DispatchFormData) => Promise<void>;
+    /** Step 3: responders on scene. Rejects if it fails. */
+    markOnScene: (id: string | number) => Promise<void>;
+    /** Step 4: resolve with an outcome. Clears it locally first, restores it and rejects if the request fails. */
+    resolveAlert: (id: string | number, data: ResolveFormData) => Promise<void>;
 }
 
 const SosAlertContext = createContext<SosAlertContextValue | null>(null);
@@ -57,8 +70,9 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
 
     // Reconcile with the server on every navigation: a resolve performed in
     // another tab, or an alert raised while this tab was backgrounded, shows up
-    // here. Keyed on the serialized ids so an unchanged list is a no-op.
-    const seededKey = (seeded ?? []).map(a => a.id).join(',');
+    // here. Keyed on the ids and their dispatch step so an unchanged list is a
+    // no-op, while a dispatch done elsewhere still comes through.
+    const seededKey = (seeded ?? []).map(a => `${a.id}:${a.status}:${a.on_scene_at ?? ''}`).join(',');
     useEffect(() => {
         if (!seeded) return;
         setAlerts(seeded);
@@ -66,12 +80,14 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
     }, [seededKey]);
 
     // Resume the alarm when the page loads mid-emergency, and silence it the
-    // moment the last alert clears. startAlarm() queues itself if the browser
-    // has not yet granted audio.
+    // moment no alert is waiting for action. Only `pending` alerts ring: once
+    // help is dispatched the admin has acted, and the pin turns orange instead.
+    // startAlarm() queues itself if the browser has not yet granted audio.
+    const pendingCount = alerts.filter(a => a.status === 'pending').length;
     useEffect(() => {
-        if (alerts.length > 0) startAlarm();
+        if (pendingCount > 0) startAlarm();
         else stopAlarm();
-    }, [alerts.length, startAlarm, stopAlarm]);
+    }, [pendingCount, startAlarm, stopAlarm]);
 
     const subscribedRef = useRef(false);
     useEffect(() => {
@@ -104,6 +120,11 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
             announceRider(data.rider_name ?? data.rider_code);
         });
 
+        // Another admin (or this one, in another tab) moved an alert a step.
+        channel.listen('.emergency.updated', (data: SosAlertPayload) => {
+            setAlerts(prev => replaceAlert(prev, data));
+        });
+
         channel.listen('.emergency.resolved', (data: SosAlertResolvedPayload) => {
             setAlerts(prev => prev.filter(a => a.id !== data.id));
         });
@@ -125,7 +146,29 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
         };
     }, [announceRider]);
 
-    const resolveAlert = useCallback(async (id: string | number) => {
+    const dispatchAlert = useCallback(async (id: string | number, data: DispatchFormData) => {
+        const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+            route('sos-alerts.dispatch', Number(id)),
+            data,
+        );
+        setAlerts(prev => replaceAlert(prev, res.alert));
+        toast.success({ title: 'Help dispatched', description: res.alert.agency_label ?? undefined });
+    }, []);
+
+    const markOnScene = useCallback(async (id: string | number) => {
+        try {
+            const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+                route('sos-alerts.on-scene', Number(id)),
+            );
+            setAlerts(prev => replaceAlert(prev, res.alert));
+            toast.success({ title: 'Responders on scene' });
+        } catch (error) {
+            toast.error({ title: 'Failed to update', description: 'Please try again.' });
+            throw error;
+        }
+    }, []);
+
+    const resolveAlert = useCallback(async (id: string | number, data: ResolveFormData) => {
         const numericId = Number(id);
 
         // Clear it optimistically so the banner and the map react instantly,
@@ -138,23 +181,27 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
         });
 
         try {
-            await axios.put(route('sos-alerts.resolve', numericId));
-        } catch {
+            await axios.put(route('sos-alerts.resolve', numericId), data);
+            toast.success({ title: 'Emergency resolved' });
+        } catch (error) {
             if (removed) {
                 const restored = removed;
                 setAlerts(prev =>
                     prev.some(a => a.id === restored.id) ? prev : [restored, ...prev],
                 );
             }
+            // The map closes the panel optimistically, so its dialog may be
+            // gone already: always tell the admin the alert is back.
             toast.error({
                 title: 'Failed to resolve emergency',
-                description: 'The alert is still marked as pending. Please try again.',
+                description: 'The alert is still open. Please try again.',
             });
+            throw error;
         }
     }, []);
 
     return (
-        <SosAlertContext.Provider value={{ alerts, resolveAlert }}>
+        <SosAlertContext.Provider value={{ alerts, dispatchAlert, markOnScene, resolveAlert }}>
             {children}
         </SosAlertContext.Provider>
     );

@@ -21,6 +21,13 @@ import {
     CheckCircle2,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { ResolveDialog } from "./ResolveDialog";
+import {
+    etaLabel,
+    minutesBetween,
+    statusLabel,
+    type ResolveFormData,
+} from "./dispatchOptions";
 import { reverseGeocode } from "@/lib/geocoding";
 import {
     type EmergencyAlert,
@@ -66,7 +73,8 @@ export function SosTable({ riders, filters }: SosTableProps) {
         Record<number, string | null>
     >({});
     const [loadingRiderId, setLoadingRiderId] = useState<number | null>(null);
-    const [resolvingAlertId, setResolvingAlertId] = useState<number | null>(null);
+    // The alert whose resolve dialog is open, with its rider (for the list update).
+    const [resolving, setResolving] = useState<{ alert: EmergencyAlert; riderId: number; riderName: string } | null>(null);
     // Controlled so we can fetch history BEFORE the accordion opens — Radix
     // measures content height once at open time, so revealing a taller list
     // asynchronously after opening leaves it clipped at the loading spinner's
@@ -133,28 +141,31 @@ export function SosTable({ riders, filters }: SosTableProps) {
         }
     };
 
-    const handleResolve = async (alert: EmergencyAlert, riderId: number) => {
-        setResolvingAlertId(alert.id);
-        try {
-            await axios.put(route("sos-alerts.resolve", alert.id));
-            setHistoryByRider((prev) => ({
-                ...prev,
-                [riderId]: prev[riderId].map((a) =>
-                    a.id === alert.id
-                        ? { ...a, status: "resolved", resolved_at: new Date().toISOString() }
-                        : a,
-                ),
-            }));
-            router.reload({ only: ["riders", "stats"] });
-            toast.success({ title: "Alert marked as resolved" });
-        } catch {
-            toast.error({
-                title: "Failed to resolve alert",
-                description: "Please try again.",
-            });
-        } finally {
-            setResolvingAlertId(null);
-        }
+    // Rejects on failure so the dialog stays open and shows the reason.
+    const handleResolve = async (data: ResolveFormData) => {
+        if (!resolving) return;
+        const { alert, riderId } = resolving;
+        const { data: res } = await axios.put<{ alert: { outcome_label: string | null; resolved_at: string | null } }>(
+            route("sos-alerts.resolve", alert.id),
+            data,
+        );
+        setHistoryByRider((prev) => ({
+            ...prev,
+            [riderId]: prev[riderId].map((a) =>
+                a.id === alert.id
+                    ? {
+                          ...a,
+                          status: "resolved",
+                          resolved_at: res.alert.resolved_at ?? new Date().toISOString(),
+                          outcome: data.outcome,
+                          outcome_label: res.alert.outcome_label,
+                          resolution_note: data.resolution_note,
+                      }
+                    : a,
+            ),
+        }));
+        router.reload({ only: ["riders", "stats"] });
+        toast.success({ title: "Alert marked as resolved" });
     };
 
     return (
@@ -239,9 +250,9 @@ export function SosTable({ riders, filters }: SosTableProps) {
                                             {latest && (
                                                 <Badge
                                                     variant="outline"
-                                                    className={`capitalize ${statusBadgeClass(latest.status)}`}
+                                                    className={statusBadgeClass(latest.status)}
                                                 >
-                                                    {latest.status}
+                                                    {statusLabel(latest.status, latest.on_scene_at)}
                                                 </Badge>
                                             )}
                                         </span>
@@ -280,9 +291,9 @@ export function SosTable({ riders, filters }: SosTableProps) {
                                                 </a>
                                                 <Badge
                                                     variant="outline"
-                                                    className={`capitalize ${statusBadgeClass(alert.status)}`}
+                                                    className={statusBadgeClass(alert.status)}
                                                 >
-                                                    {alert.status}
+                                                    {statusLabel(alert.status, alert.on_scene_at)}
                                                 </Badge>
                                                 {alert.resolved_at ? (
                                                     <span className="text-xs text-muted-foreground">
@@ -293,17 +304,19 @@ export function SosTable({ riders, filters }: SosTableProps) {
                                                         size="sm"
                                                         variant="outline"
                                                         className="ml-auto h-7 gap-1.5 text-xs"
-                                                        disabled={resolvingAlertId === alert.id}
-                                                        onClick={() => handleResolve(alert, rider.id)}
+                                                        onClick={() =>
+                                                            setResolving({
+                                                                alert,
+                                                                riderId: rider.id,
+                                                                riderName: `${rider.first_name} ${rider.last_name}`,
+                                                            })
+                                                        }
                                                     >
-                                                        {resolvingAlertId === alert.id ? (
-                                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                                        ) : (
-                                                            <CheckCircle2 className="w-3 h-3" />
-                                                        )}
+                                                        <CheckCircle2 className="w-3 h-3" />
                                                         Mark Resolved
                                                     </Button>
                                                 )}
+                                                <ResponseSummary alert={alert} />
                                             </div>
                                         ))}
                                     </div>
@@ -391,6 +404,49 @@ export function SosTable({ riders, filters }: SosTableProps) {
                     </div>
                 </div>
             )}
+
+            <ResolveDialog
+                open={resolving !== null}
+                onOpenChange={(open) => {
+                    if (!open) setResolving(null);
+                }}
+                riderName={resolving?.riderName ?? ""}
+                onSubmit={handleResolve}
+            />
         </Card>
+    );
+}
+
+/** Responded by · Response time · Outcome for one alert in the history list. */
+function ResponseSummary({ alert }: { alert: EmergencyAlert }) {
+    if (!alert.dispatched_at && !alert.outcome_label) return null;
+
+    const responder = [alert.responder_first_name, alert.responder_last_name]
+        .filter(Boolean)
+        .join(" ");
+    const respondedBy = alert.agency_label
+        ? responder
+            ? `${alert.agency_label} – ${responder}`
+            : alert.agency_label
+        : null;
+    const responseTime = minutesBetween(alert.triggered_at, alert.on_scene_at);
+
+    return (
+        <div className="basis-full grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+            <span>
+                <span className="font-medium text-foreground">Responded by:</span>{" "}
+                {respondedBy ?? "—"}
+                {alert.dispatched_at && !alert.on_scene_at && ` (ETA ${etaLabel(alert.eta_minutes)})`}
+            </span>
+            <span>
+                <span className="font-medium text-foreground">Response time:</span>{" "}
+                {responseTime ?? "—"}
+            </span>
+            <span title={alert.resolution_note ?? undefined}>
+                <span className="font-medium text-foreground">Outcome:</span>{" "}
+                {alert.outcome_label ?? "—"}
+                {alert.resolution_note && ` – ${alert.resolution_note}`}
+            </span>
+        </div>
     );
 }

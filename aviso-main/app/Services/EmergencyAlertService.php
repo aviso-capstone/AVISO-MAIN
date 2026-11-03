@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Events\EmergencyAlertResolved;
 use App\Events\EmergencyAlertTriggered;
+use App\Events\EmergencyAlertUpdated;
 use App\Models\EmergencyAlert;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class EmergencyAlertService
 {
@@ -217,21 +219,143 @@ class EmergencyAlertService
 
     public function getAlertsForRider(User $rider): Collection
     {
-        return $rider->emergencyAlerts()->orderByDesc('triggered_at')->get();
+        return $rider->emergencyAlerts()
+            ->with('handler:id,first_name,last_name')
+            ->orderByDesc('triggered_at')
+            ->get()
+            ->each(fn (EmergencyAlert $alert) => $alert->setAttribute('agency_label', $alert->agencyLabel())
+                ->setAttribute('outcome_label', $alert->outcomeLabel())
+                ->setAttribute('handled_by_name', $alert->handler
+                    ? trim("{$alert->handler->first_name} {$alert->handler->last_name}")
+                    : null));
     }
 
-    public function resolve(EmergencyAlert $alert): EmergencyAlert
+    /**
+     * Step 2 of the dispatch checklist: the admin called an agency and help is
+     * on the way. Uses the existing `acknowledged` status, which stops the
+     * alarm and turns the pin orange.
+     *
+     * @param array{responder_agency: string, responder_agency_other?: ?string, eta_minutes?: ?int, responder_first_name?: ?string, responder_last_name?: ?string} $data
+     */
+    public function dispatch(EmergencyAlert $alert, array $data, User $admin): EmergencyAlert
     {
+        $this->ensureStatus($alert, [EmergencyAlert::STATUS_PENDING], 'Help was already dispatched or the alert is resolved.');
+
+        $isOther = $data['responder_agency'] === EmergencyAlert::AGENCY_OTHER;
+
         $alert->update([
-            'status'      => EmergencyAlert::STATUS_RESOLVED,
-            'resolved_at' => now(),
+            'status'                 => EmergencyAlert::STATUS_ACKNOWLEDGED,
+            'dispatched_at'          => now(),
+            'responder_agency'       => $data['responder_agency'],
+            'responder_agency_other' => $isOther ? trim((string) ($data['responder_agency_other'] ?? '')) : null,
+            'eta_minutes'            => $data['eta_minutes'] ?? null,
+            'responder_first_name'   => self::cleanName($data['responder_first_name'] ?? null),
+            'responder_last_name'    => self::cleanName($data['responder_last_name'] ?? null),
+            'handled_by'             => $admin->id,
+        ]);
+
+        return $this->afterUpdate($alert);
+    }
+
+    /** Step 3: the agency confirmed the responders reached the rider. */
+    public function markOnScene(EmergencyAlert $alert): EmergencyAlert
+    {
+        $this->ensureStatus($alert, [EmergencyAlert::STATUS_ACKNOWLEDGED], 'Mark help dispatched first.');
+
+        if ($alert->on_scene_at === null) {
+            $alert->update(['on_scene_at' => now()]);
+        }
+
+        return $this->afterUpdate($alert);
+    }
+
+    /**
+     * Step 4: close the alert with how it ended.
+     *
+     * @param array{outcome: string, resolution_note?: ?string} $data
+     */
+    public function resolve(EmergencyAlert $alert, array $data, ?User $admin = null): EmergencyAlert
+    {
+        $this->ensureStatus(
+            $alert,
+            [EmergencyAlert::STATUS_PENDING, EmergencyAlert::STATUS_ACKNOWLEDGED],
+            'This alert is already resolved.',
+        );
+
+        $note = trim((string) ($data['resolution_note'] ?? ''));
+
+        $alert->update([
+            'status'          => EmergencyAlert::STATUS_RESOLVED,
+            'resolved_at'     => now(),
+            'outcome'         => $data['outcome'],
+            'resolution_note' => $note !== '' ? $note : null,
+            // Resolved without a dispatch step (e.g. a false alarm): the admin
+            // who closed it is the one on record.
+            'handled_by'      => $alert->handled_by ?? $admin?->id,
         ]);
 
         // Tell every connected admin view to drop it. Without this, a second
         // tab or a second operator keeps a red pin and a looping alarm.
         $this->broadcastQuietly(new EmergencyAlertResolved($alert));
 
+        return $alert->load('user', 'handler');
+    }
+
+    /**
+     * The rider's own most recent alert, as the SOS screen's status card shows
+     * it. Only agency, ETA, times and outcome: no admin or responder names.
+     */
+    public function latestForRider(User $rider): ?array
+    {
+        $alert = $rider->emergencyAlerts()->latest('triggered_at')->first();
+
+        return $alert ? self::riderStatus($alert) : null;
+    }
+
+    /** @return array<string, mixed> */
+    public static function riderStatus(EmergencyAlert $alert): array
+    {
+        return [
+            'id'            => $alert->id,
+            'status'        => $alert->status,
+            'triggered_at'  => $alert->triggered_at?->toISOString(),
+            'dispatched_at' => $alert->dispatched_at?->toISOString(),
+            'agency_label'  => $alert->agencyLabel(),
+            'eta_minutes'   => $alert->eta_minutes,
+            'on_scene_at'   => $alert->on_scene_at?->toISOString(),
+            'outcome_label' => $alert->outcomeLabel(),
+            'resolved_at'   => $alert->resolved_at?->toISOString(),
+        ];
+    }
+
+    /** Reload relations and tell every admin view about the new step. */
+    private function afterUpdate(EmergencyAlert $alert): EmergencyAlert
+    {
+        $alert->load('user', 'handler');
+        $this->broadcastQuietly(new EmergencyAlertUpdated($alert));
+
         return $alert;
+    }
+
+    /**
+     * Steps must happen in order. Two admins acting on the same alert at once
+     * is the realistic case: the second one gets a clear message instead of
+     * overwriting the first dispatch.
+     *
+     * @param string[] $allowed
+     */
+    private function ensureStatus(EmergencyAlert $alert, array $allowed, string $message): void
+    {
+        if (!in_array($alert->status, $allowed, true)) {
+            throw ValidationException::withMessages(['status' => $message]);
+        }
+    }
+
+    private static function cleanName(?string $name): ?string
+    {
+        $name = $name !== null ? trim(preg_replace('/\s+/', ' ', $name)) : '';
+
+        return $name !== '' ? $name : null;
     }
 
     /**
@@ -243,7 +367,7 @@ class EmergencyAlertService
      */
     public function getUnresolvedForBroadcast(): array
     {
-        return EmergencyAlert::with('user')
+        return EmergencyAlert::with('user', 'handler')
             ->unresolved()
             ->latest('triggered_at')
             ->get()
@@ -282,6 +406,7 @@ class EmergencyAlertService
             'total_today' => EmergencyAlert::whereDate('triggered_at', today())->count(),
             'total_week'  => EmergencyAlert::where('triggered_at', '>=', now()->subWeek())->count(),
             'pending'     => EmergencyAlert::pending()->count(),
+            'dispatched'  => EmergencyAlert::where('status', EmergencyAlert::STATUS_ACKNOWLEDGED)->count(),
             'resolved'    => EmergencyAlert::where('status', EmergencyAlert::STATUS_RESOLVED)->count(),
         ];
     }

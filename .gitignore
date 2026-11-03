@@ -35,3 +35,8 @@ yarn-error.log*
 
 # Camera distance calibration work (local only)
 /camera-distance-calibration/
+/crash-detection-calibration/
+/aviso-progress-report/
+
+# graphify knowledge graphs (local only)
+graphify-out/

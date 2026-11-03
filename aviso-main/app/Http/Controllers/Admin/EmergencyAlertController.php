@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\EmergencyAlertTriggered;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\DispatchEmergencyAlertRequest;
+use App\Http\Requests\Admin\ResolveEmergencyAlertRequest;
 use App\Models\EmergencyAlert;
 use App\Models\User;
 use App\Services\EmergencyAlertService;
@@ -36,11 +39,33 @@ class EmergencyAlertController extends Controller
         ]);
     }
 
-    public function resolve(EmergencyAlert $alert): JsonResponse
+    public function dispatch(DispatchEmergencyAlertRequest $request, EmergencyAlert $alert): JsonResponse
     {
+        $alert = $this->emergencyAlertService->dispatch($alert, $request->validated(), $request->user());
+
         return response()->json([
             'success' => true,
-            'alert'   => $this->emergencyAlertService->resolve($alert),
+            'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
+        ]);
+    }
+
+    public function onScene(EmergencyAlert $alert): JsonResponse
+    {
+        $alert = $this->emergencyAlertService->markOnScene($alert);
+
+        return response()->json([
+            'success' => true,
+            'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
+        ]);
+    }
+
+    public function resolve(ResolveEmergencyAlertRequest $request, EmergencyAlert $alert): JsonResponse
+    {
+        $alert = $this->emergencyAlertService->resolve($alert, $request->validated(), $request->user());
+
+        return response()->json([
+            'success' => true,
+            'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
         ]);
     }
 }

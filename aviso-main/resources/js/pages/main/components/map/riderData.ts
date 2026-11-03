@@ -1,4 +1,4 @@
-import { type SosHazardBefore, type SosTriggerType } from '@/types/models';
+import { type SosDispatchFields, type SosHazardBefore, type SosTriggerType } from '@/types/models';
 
 export type LngLat = [number, number];
 
@@ -24,9 +24,10 @@ export interface EmergencyAlert {
     triggeredAt: string;
     triggerType: SosTriggerType | null;
     hazardBefore: SosHazardBefore | null;
-    /** Only meaningful for alerts opened from history — live arrivals are
-     * always freshly 'pending' so this is left undefined for them. */
+    /** pending → acknowledged (help dispatched) → resolved. */
     status?: string;
+    /** Who was called, ETA, on-scene time and outcome. */
+    dispatch: SosDispatchFields;
 }
 
 export const RIDER_DEFS: RiderDef[] = [

@@ -42,8 +42,41 @@ export interface EmergencyAlert {
     latitude: number;
     longitude: number;
     triggered_at: string;
+    /** `acknowledged` = help dispatched. */
     status: 'pending' | 'acknowledged' | 'resolved' | string;
     resolved_at: string | null;
+    dispatched_at?: string | null;
+    responder_agency?: string | null;
+    responder_agency_other?: string | null;
+    responder_first_name?: string | null;
+    responder_last_name?: string | null;
+    eta_minutes?: number | null;
+    on_scene_at?: string | null;
+    outcome?: string | null;
+    resolution_note?: string | null;
+    agency_label?: string | null;
+    outcome_label?: string | null;
+    handled_by_name?: string | null;
+}
+
+/** Dispatch-tracking fields carried by every SOS alert payload. */
+export interface SosDispatchFields {
+    dispatched_at: string | null;
+    responder_agency: string | null;
+    responder_agency_other: string | null;
+    /** Agency as shown to people (the typed name when "Other"). */
+    agency_label: string | null;
+    responder_first_name: string | null;
+    responder_last_name: string | null;
+    /** null = Unknown, 61 = more than 1 hour. */
+    eta_minutes: number | null;
+    on_scene_at: string | null;
+    outcome: string | null;
+    outcome_label: string | null;
+    resolution_note: string | null;
+    resolved_at: string | null;
+    /** The admin who dispatched help. */
+    handled_by_name: string | null;
 }
 
 export interface SosRiderSummary {
@@ -88,7 +121,7 @@ export interface BarangayHazardCount {
  * broadcast, the alerts seeded into shared props on page load, and the
  * `?alert=<id>` historical deep link.
  */
-export interface SosAlertPayload {
+export interface SosAlertPayload extends SosDispatchFields {
     id: number;
     rider_code: string;
     latitude: number;

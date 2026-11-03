@@ -38,4 +38,13 @@ class EmergencyController extends Controller
             ],
         ], 201);
     }
+
+    /** Status of the rider's own latest SOS, for the SOS screen's status card. */
+    public function latest(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data'    => $this->emergencyAlertService->latestForRider(Auth::user()),
+        ]);
+    }
 }

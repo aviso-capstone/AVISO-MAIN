@@ -1,9 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, AlertTriangle, MapPin, CheckCircle2, Hand, Siren } from 'lucide-react';
+import { X, AlertTriangle, MapPin, MapPinned, CheckCircle2, Hand, Siren, Truck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { type EmergencyAlert } from './riderData';
-import { type SosTriggerType } from '@/types/models';
+import { type SosDispatchFields, type SosTriggerType } from '@/types/models';
+import { DispatchDialog } from '../sos/DispatchDialog';
+import { ResolveDialog } from '../sos/ResolveDialog';
+import {
+    etaLabel,
+    isEtaOverdue,
+    minutesBetween,
+    type DispatchFormData,
+    type ResolveFormData,
+} from '../sos/dispatchOptions';
 import { getRiderThemeColor } from './riderUtils';
 import { getHazardTailwindColors } from '@/lib/hazards';
 import { reverseGeocode } from '@/lib/geocoding';
@@ -32,7 +41,10 @@ interface EmergencyAlertPanelProps {
     emergency: EmergencyAlert;
     theme: 'day' | 'night' | 'dusk' | 'dawn';
     onClose: () => void;
-    onResolve: () => void;
+    /** Each step rejects on failure so its dialog can show the reason. */
+    onDispatch: (data: DispatchFormData) => Promise<void>;
+    onOnScene: () => Promise<void>;
+    onResolve: (data: ResolveFormData) => Promise<void>;
     /** Set when viewing a past record from SOS Alerts history rather than a
      * live in-progress emergency — softens the "active emergency" framing
      * (no pulsing live indicator, no "Current Position" wording) since a
@@ -40,9 +52,42 @@ interface EmergencyAlertPanelProps {
     isHistorical?: boolean;
 }
 
-export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHistorical = false }: EmergencyAlertPanelProps) {
+export function EmergencyAlertPanel({
+    emergency,
+    theme,
+    onClose,
+    onDispatch,
+    onOnScene,
+    onResolve,
+    isHistorical = false,
+}: EmergencyAlertPanelProps) {
     const riderColor = getRiderThemeColor(emergency.colorBase, theme);
     const isResolved = emergency.status === 'resolved';
+    const isDispatched = emergency.status === 'acknowledged';
+    const dispatch = emergency.dispatch;
+    const [dispatchOpen, setDispatchOpen] = useState(false);
+    const [resolveOpen, setResolveOpen] = useState(false);
+    const [onSceneSaving, setOnSceneSaving] = useState(false);
+
+    // Re-check the ETA every 30 s so the overdue warning appears on its own.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!isDispatched || dispatch.on_scene_at) return;
+        const timer = setInterval(() => setNow(Date.now()), 30_000);
+        return () => clearInterval(timer);
+    }, [isDispatched, dispatch.on_scene_at]);
+    const overdue = isDispatched && isEtaOverdue(dispatch.dispatched_at, dispatch.eta_minutes, dispatch.on_scene_at, now);
+
+    const handleOnScene = async () => {
+        setOnSceneSaving(true);
+        try {
+            await onOnScene();
+        } catch {
+            // The caller already showed the error.
+        } finally {
+            setOnSceneSaving(false);
+        }
+    };
     const hazard = emergency.hazardBefore;
     const trigger = emergency.triggerType ? TRIGGER_INFO[emergency.triggerType] : null;
     const lng = Number(emergency.coords[0]);
@@ -106,11 +151,15 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
             <div className={`flex items-center justify-between mb-3 p-2.5 rounded-lg border ${
                 isResolved
                     ? 'bg-green-500/10 border-green-500/20'
-                    : 'bg-destructive/10 border-destructive/20'
+                    : isDispatched
+                        ? 'bg-amber-500/10 border-amber-500/30'
+                        : 'bg-destructive/10 border-destructive/20'
             }`}>
                 <div className="flex items-center gap-2">
                     {isResolved ? (
                         <CheckCircle2 className="h-3 w-3 text-green-600" />
+                    ) : isDispatched ? (
+                        <Truck className="h-3.5 w-3.5 text-amber-600" />
                     ) : isHistorical ? (
                         <AlertTriangle className="h-3 w-3 text-destructive" />
                     ) : (
@@ -120,9 +169,13 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
                         </span>
                     )}
                     <span className={`text-xs font-bold uppercase tracking-wide ${
-                        isResolved ? 'text-green-600' : 'text-destructive'
+                        isResolved ? 'text-green-600' : isDispatched ? 'text-amber-600' : 'text-destructive'
                     }`}>
-                        {isResolved ? 'Resolved' : isHistorical ? 'Pending Response' : 'Active Emergency'}
+                        {isResolved
+                            ? 'Resolved'
+                            : isDispatched
+                                ? (dispatch.on_scene_at ? 'Responders on scene' : 'Help on the way')
+                                : isHistorical ? 'Pending Response' : 'Active Emergency'}
                     </span>
                 </div>
                 <div className="text-right">
@@ -256,22 +309,139 @@ export function EmergencyAlertPanel({ emergency, theme, onClose, onResolve, isHi
                 </div>
             )}
 
-            {/* Resolve Button */}
+            {/* Response timeline: triggered → dispatched → on scene → resolved */}
+            <ResponseTimeline triggeredAt={emergency.triggeredAt} dispatch={dispatch} />
+
+            {overdue && (
+                <div
+                    role="alert"
+                    className="flex items-start gap-2 mb-3 p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/15 text-[11px] text-amber-700 dark:text-amber-400"
+                >
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                        <strong>ETA passed</strong> — call {dispatch.agency_label ?? 'the agency'} to check if the responders arrived.
+                    </span>
+                </div>
+            )}
+
+            {/* Checklist actions */}
             {isResolved ? (
                 <div className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md bg-green-500/10 text-green-600 text-sm font-medium">
                     <CheckCircle2 className="w-4 h-4" />
                     Already Resolved
                 </div>
             ) : (
-                <Button
-                    variant="destructive"
-                    size="sm"
-                    className="w-full"
-                    onClick={onResolve}
-                >
-                    Resolve Emergency
-                </Button>
+                <div className="space-y-2">
+                    {!isDispatched && (
+                        <Button
+                            size="sm"
+                            className="w-full gap-1.5 bg-amber-600 text-white hover:bg-amber-700"
+                            onClick={() => setDispatchOpen(true)}
+                        >
+                            <Truck className="w-4 h-4" />
+                            Mark help dispatched
+                        </Button>
+                    )}
+                    {isDispatched && !dispatch.on_scene_at && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full gap-1.5 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                            onClick={handleOnScene}
+                            disabled={onSceneSaving}
+                        >
+                            {onSceneSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPinned className="w-4 h-4" />}
+                            Responders on scene
+                        </Button>
+                    )}
+                    <Button
+                        variant={isDispatched ? 'default' : 'outline'}
+                        size="sm"
+                        className={`w-full gap-1.5 ${isDispatched ? 'bg-green-600 text-white hover:bg-green-700' : ''}`}
+                        onClick={() => setResolveOpen(true)}
+                    >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Resolve emergency
+                    </Button>
+                </div>
             )}
+
+            <DispatchDialog
+                open={dispatchOpen}
+                onOpenChange={setDispatchOpen}
+                riderName={emergency.riderName}
+                onSubmit={onDispatch}
+            />
+            <ResolveDialog
+                open={resolveOpen}
+                onOpenChange={setResolveOpen}
+                riderName={emergency.riderName}
+                onSubmit={onResolve}
+            />
+        </div>
+    );
+}
+
+const timeOf = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+/** The dispatch checklist as a short vertical timeline. */
+function ResponseTimeline({ triggeredAt, dispatch }: { triggeredAt: string; dispatch: SosDispatchFields }) {
+    const responder = [dispatch.responder_first_name, dispatch.responder_last_name].filter(Boolean).join(' ');
+    const responseTime = minutesBetween(triggeredAt, dispatch.on_scene_at);
+
+    const steps: { done: boolean; title: string; time: string | null; detail?: string }[] = [
+        { done: true, title: 'SOS received', time: timeOf(triggeredAt) },
+        {
+            done: !!dispatch.dispatched_at,
+            title: dispatch.agency_label ? `Dispatched to ${dispatch.agency_label}` : 'Help dispatched',
+            time: dispatch.dispatched_at ? timeOf(dispatch.dispatched_at) : null,
+            detail: dispatch.dispatched_at
+                ? [
+                    `ETA ${etaLabel(dispatch.eta_minutes)}`,
+                    responder || null,
+                    dispatch.handled_by_name ? `by ${dispatch.handled_by_name}` : null,
+                ].filter(Boolean).join(' · ')
+                : undefined,
+        },
+        {
+            done: !!dispatch.on_scene_at,
+            title: 'Responders on scene',
+            time: dispatch.on_scene_at ? timeOf(dispatch.on_scene_at) : null,
+            detail: responseTime ? `${responseTime} after the SOS` : undefined,
+        },
+        {
+            done: !!dispatch.resolved_at,
+            title: dispatch.outcome_label ? `Resolved — ${dispatch.outcome_label}` : 'Resolved',
+            time: dispatch.resolved_at ? timeOf(dispatch.resolved_at) : null,
+            detail: dispatch.resolution_note ?? undefined,
+        },
+    ];
+
+    return (
+        <div className="border border-border/60 rounded-lg p-3 mb-3 bg-muted/30">
+            <strong className="text-foreground block text-[10px] uppercase tracking-wider mb-2">Response</strong>
+            <ol className="space-y-2">
+                {steps.map(step => (
+                    <li key={step.title} className="flex gap-2 text-[11px]">
+                        <span
+                            className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
+                                step.done ? 'bg-green-600' : 'border border-muted-foreground/50'
+                            }`}
+                            aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                            <div className="flex justify-between gap-2">
+                                <span className={step.done ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                                    {step.title}
+                                </span>
+                                {step.time && <span className="font-mono text-muted-foreground">{step.time}</span>}
+                            </div>
+                            {step.detail && <div className="text-muted-foreground break-words">{step.detail}</div>}
+                        </div>
+                    </li>
+                ))}
+            </ol>
         </div>
     );
 }
