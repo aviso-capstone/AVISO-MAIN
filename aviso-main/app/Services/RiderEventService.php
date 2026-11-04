@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EmergencyAlert;
 use App\Models\RiderEvent;
 use App\Models\Trip;
 use App\Models\User;
@@ -90,10 +91,41 @@ class RiderEventService
         $perPage = (int) ($filters['per_page'] ?? 25);
         $perPage = in_array($perPage, self::PER_PAGE_OPTIONS, true) ? $perPage : 25;
 
-        return $this->filteredQuery($filters, $rider)
+        $page = $this->filteredQuery($filters, $rider)
             ->orderByDesc('detected_at')
             ->paginate($perPage)
             ->withQueryString();
+
+        if ($rider) {
+            $this->attachEmergencyResponse($page);
+        }
+
+        return $page;
+    }
+
+    /**
+     * For the rider's Crash Logs: a crash that raised an SOS carries the same
+     * event_uid as its emergency alert, so each crash row can show who
+     * responded and how it ended. One extra query per page.
+     */
+    private function attachEmergencyResponse(LengthAwarePaginator $page): void
+    {
+        $uids = collect($page->items())
+            ->pluck('event_uid')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($uids->isEmpty()) {
+            return;
+        }
+
+        $alerts = EmergencyAlert::whereIn('event_uid', $uids)->get()->keyBy('event_uid');
+
+        foreach ($page->items() as $event) {
+            $alert = $event->event_uid ? $alerts->get($event->event_uid) : null;
+            $event->setAttribute('emergency_response', $alert ? EmergencyAlertService::riderStatus($alert) : null);
+        }
     }
 
     /**

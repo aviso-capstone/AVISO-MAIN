@@ -66,6 +66,8 @@ Route::middleware('web')->group(function () {
         // ── SOS Alert History ──────────────────────────────────────────────
         Route::get('/sos-alerts', [\App\Http\Controllers\Admin\EmergencyAlertController::class, 'index'])->name('sos-alerts.index');
         Route::get('/sos-alerts/{user}/history', [\App\Http\Controllers\Admin\EmergencyAlertController::class, 'history'])->name('sos-alerts.history');
+        Route::post('/sos-alerts/{alert}/dispatch', [\App\Http\Controllers\Admin\EmergencyAlertController::class, 'dispatch'])->name('sos-alerts.dispatch');
+        Route::post('/sos-alerts/{alert}/on-scene', [\App\Http\Controllers\Admin\EmergencyAlertController::class, 'onScene'])->name('sos-alerts.on-scene');
         Route::put('/sos-alerts/{alert}/resolve', [\App\Http\Controllers\Admin\EmergencyAlertController::class, 'resolve'])->name('sos-alerts.resolve');
 
         // ── Live Rider Tracking (JSON API for the map) ─────────────────────

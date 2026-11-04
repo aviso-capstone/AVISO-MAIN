@@ -57,6 +57,7 @@ Route::prefix('rider')->group(function () {
 
         // ── Emergency SOS ──────────────────────────────────────────────────────
         Route::post('/emergency/sos', [EmergencyController::class, 'sos']);
+        Route::get('/emergency/latest', [EmergencyController::class, 'latest'])->middleware('throttle:30,1');
 
         // ── IoT crash-detection unit ───────────────────────────────────────────
         Route::get('/iot/device',           [IotDeviceController::class, 'show']);

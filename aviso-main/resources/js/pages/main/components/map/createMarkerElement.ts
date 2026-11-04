@@ -66,8 +66,11 @@ export function createMarkerElement(color: string, onClick: () => void): HTMLDiv
     return wrapper;
 }
 
-// SOS emergency marker — large red pulsing marker with exclamation icon
-export function createEmergencyMarkerElement(onClick: () => void): HTMLDivElement {
+// SOS emergency marker — large red pulsing marker with exclamation icon.
+// Once help is dispatched it turns orange with a slower pulse ("help on the way").
+export function createEmergencyMarkerElement(onClick: () => void, dispatched = false): HTMLDivElement {
+    const color = dispatched ? '#f59e0b' : '#ef4444';
+    const glow = dispatched ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)';
     const wrapper = document.createElement('div');
     wrapper.style.width = '40px';
     wrapper.style.height = '40px';
@@ -80,7 +83,7 @@ export function createEmergencyMarkerElement(onClick: () => void): HTMLDivElemen
         position: 'absolute',
         inset: '-6px',
         borderRadius: '9999px',
-        border: '2px solid #ef4444',
+        border: `2px solid ${color}`,
         opacity: '0.4',
         animation: 'sos-ping-slow 2s ease-in-out infinite',
     });
@@ -92,9 +95,9 @@ export function createEmergencyMarkerElement(onClick: () => void): HTMLDivElemen
         position: 'absolute',
         inset: '0px',
         borderRadius: '9999px',
-        background: '#ef4444',
+        background: color,
         opacity: '0.25',
-        animation: 'sos-ping-fast 1.2s cubic-bezier(0,0,0.2,1) infinite',
+        animation: dispatched ? 'sos-ping-slow 2.4s ease-in-out infinite' : 'sos-ping-fast 1.2s cubic-bezier(0,0,0.2,1) infinite',
     });
     wrapper.appendChild(innerRing);
 
@@ -109,14 +112,14 @@ export function createEmergencyMarkerElement(onClick: () => void): HTMLDivElemen
         width: '40px',
         height: '40px',
         overflow: 'visible',
-        filter: 'drop-shadow(0 3px 10px rgba(239,68,68,0.7))',
+        filter: `drop-shadow(0 3px 10px ${glow})`,
     });
 
     const circle = document.createElementNS(NS, 'circle');
     circle.setAttribute('cx', '22');
     circle.setAttribute('cy', '22');
     circle.setAttribute('r', '20');
-    circle.setAttribute('fill', '#ef4444');
+    circle.setAttribute('fill', color);
     circle.setAttribute('stroke', 'white');
     circle.setAttribute('stroke-width', '2.5');
 

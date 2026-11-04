@@ -25,6 +25,39 @@ class EmergencyAlert extends Model
         self::TRIGGER_CRASH_PHONE,
     ];
 
+    /**
+     * Dispatch choices. These lists are the single source of valid values;
+     * resources/js/pages/main/components/sos/dispatchOptions.ts mirrors them.
+     */
+    const AGENCY_OTHER = 'other';
+
+    const AGENCIES = [
+        'zcdrrmo'      => 'ZCDRRMO',
+        'eoc'          => 'Emergency Operations Center',
+        'rescue'       => 'Technical Rescue / Fire Auxiliary',
+        'ems'          => 'Emergency Medical Services',
+        'fire'         => 'Zamboanga City Fire District',
+        'barangay'     => 'Barangay Responders',
+        'pnp'          => 'Police (PNP)',
+        'red_cross'    => 'Philippine Red Cross',
+        'national_911' => '911',
+        self::AGENCY_OTHER => 'Other',
+    ];
+
+    /** Minutes; 61 means "More than 1 hour". No ETA (null) means Unknown. */
+    const ETA_MORE_THAN_HOUR = 61;
+    const ETA_OPTIONS = [5, 10, 15, 20, 30, 45, 60, self::ETA_MORE_THAN_HOUR];
+
+    const OUTCOME_OTHER = 'other';
+
+    const OUTCOMES = [
+        'hospital'        => 'Brought to hospital',
+        'treated_on_site' => 'Treated on site',
+        'rider_ok'        => 'Rider OK, no help needed',
+        'false_alarm'     => 'False alarm',
+        self::OUTCOME_OTHER => 'Other',
+    ];
+
     protected $fillable = [
         'user_id',
         'event_uid',
@@ -37,18 +70,63 @@ class EmergencyAlert extends Model
         'triggered_at',
         'status',
         'resolved_at',
+        'dispatched_at',
+        'responder_agency',
+        'responder_agency_other',
+        'responder_first_name',
+        'responder_last_name',
+        'eta_minutes',
+        'on_scene_at',
+        'outcome',
+        'resolution_note',
+        'handled_by',
     ];
 
     protected $casts = [
-        'latitude'     => 'decimal:7',
-        'longitude'    => 'decimal:7',
-        'triggered_at' => 'datetime',
-        'resolved_at'  => 'datetime',
+        'latitude'      => 'decimal:7',
+        'longitude'     => 'decimal:7',
+        'triggered_at'  => 'datetime',
+        'resolved_at'   => 'datetime',
+        'dispatched_at' => 'datetime',
+        'on_scene_at'   => 'datetime',
+        'eta_minutes'   => 'integer',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The admin who dispatched help (the dispatcher on record). */
+    public function handler()
+    {
+        return $this->belongsTo(User::class, 'handled_by');
+    }
+
+    /** Agency name as shown to people: the typed name when "Other" was picked. */
+    public function agencyLabel(): ?string
+    {
+        if (!$this->responder_agency) {
+            return null;
+        }
+        if ($this->responder_agency === self::AGENCY_OTHER) {
+            return $this->responder_agency_other ?: 'Other';
+        }
+
+        return self::AGENCIES[$this->responder_agency] ?? $this->responder_agency;
+    }
+
+    public function outcomeLabel(): ?string
+    {
+        return $this->outcome ? (self::OUTCOMES[$this->outcome] ?? $this->outcome) : null;
+    }
+
+    /** Responder full name, or null when the agency gave none. */
+    public function responderName(): ?string
+    {
+        $name = trim(($this->responder_first_name ?? '') . ' ' . ($this->responder_last_name ?? ''));
+
+        return $name !== '' ? $name : null;
     }
 
     public function scopePending(Builder $query): Builder

@@ -5,12 +5,15 @@ import { type EmergencyAlert } from './riderData';
 import { type HazardLog } from '@/types/models';
 import { createEmergencyMarkerElement } from './createMarkerElement';
 import { EmergencyAlertPanel } from './EmergencyAlertPanel';
+import { type DispatchFormData, type ResolveFormData } from '../sos/dispatchOptions';
 
 interface EmergencyRidersProps {
     theme?: 'day' | 'night' | 'dusk' | 'dawn';
     hazards: HazardLog[];
     emergencies: EmergencyAlert[];
-    onResolve: (id: string) => void;
+    onDispatch: (id: string, data: DispatchFormData) => Promise<void>;
+    onOnScene: (id: string) => Promise<void>;
+    onResolve: (id: string, data: ResolveFormData) => Promise<void>;
     /** Told whether a rider's SOS panel is open, so other overlays can make room. */
     onPanelOpenChange?: (open: boolean) => void;
 }
@@ -33,9 +36,11 @@ function ensureSosKeyframes() {
     document.head.appendChild(style);
 }
 
-export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve, onPanelOpenChange }: EmergencyRidersProps) {
+export function EmergencyRiders({ theme = 'day', hazards, emergencies, onDispatch, onOnScene, onResolve, onPanelOpenChange }: EmergencyRidersProps) {
     const { map, isLoaded } = useMap();
     const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+    // Status each marker was drawn with, so a dispatch redraws it orange.
+    const markerStatusRef = useRef<Record<string, string | undefined>>({});
     const prevIdsRef = useRef<Set<string>>(new Set());
     const [activePanel, setActivePanel] = useState<string | null>(null);
 
@@ -53,11 +58,17 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
         const currentIds = new Set(emergencies.map(e => e.id));
         const existingIds = new Set(Object.keys(markersRef.current));
 
-        // Move existing markers if coords changed (rider moved after SOS)
+        // Move existing markers if coords changed (rider moved after SOS), and
+        // drop any whose status changed so it is redrawn in its new colour.
         for (const emergency of emergencies) {
-            if (existingIds.has(emergency.id)) {
-                markersRef.current[emergency.id].setLngLat(emergency.coords);
+            if (!existingIds.has(emergency.id)) continue;
+            if (markerStatusRef.current[emergency.id] !== emergency.status) {
+                markersRef.current[emergency.id].remove();
+                delete markersRef.current[emergency.id];
+                existingIds.delete(emergency.id);
+                continue;
             }
+            markersRef.current[emergency.id].setLngLat(emergency.coords);
         }
 
         // Add new markers
@@ -65,7 +76,7 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
             if (!existingIds.has(emergency.id)) {
                 const el = createEmergencyMarkerElement(() => {
                     setActivePanel(prev => prev === emergency.id ? null : emergency.id);
-                });
+                }, emergency.status === 'acknowledged');
 
                 const marker = new mapboxgl.Marker({
                     element: el,
@@ -78,6 +89,7 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
                     .addTo(map);
 
                 markersRef.current[emergency.id] = marker;
+                markerStatusRef.current[emergency.id] = emergency.status;
             }
         }
 
@@ -86,6 +98,7 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
             if (!currentIds.has(id)) {
                 markersRef.current[id].remove();
                 delete markersRef.current[id];
+                delete markerStatusRef.current[id];
             }
         }
 
@@ -113,9 +126,9 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
         onPanelOpenChange?.(panelOpen);
     }, [panelOpen, onPanelOpenChange]);
 
-    const handleResolve = (id: string) => {
+    const handleResolve = async (id: string, data: ResolveFormData) => {
+        await onResolve(id, data);
         setActivePanel(null);
-        onResolve(id);
     };
 
     return (
@@ -125,7 +138,9 @@ export function EmergencyRiders({ theme = 'day', hazards, emergencies, onResolve
                     emergency={activeEmergency}
                     theme={theme}
                     onClose={() => setActivePanel(null)}
-                    onResolve={() => handleResolve(activeEmergency.id)}
+                    onDispatch={data => onDispatch(activeEmergency.id, data)}
+                    onOnScene={() => onOnScene(activeEmergency.id)}
+                    onResolve={data => handleResolve(activeEmergency.id, data)}
                 />
             )}
         </>

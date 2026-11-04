@@ -22,8 +22,11 @@ function elapsedLabel(triggeredAt: string): string {
  * ACTIVE" card directly above the map.
  */
 export function SosAlertBanner() {
-    const { alerts } = useSosAlerts();
+    const { alerts: allAlerts } = useSosAlerts();
     const { url } = usePage();
+    // Only alerts nobody has acted on yet. Once help is dispatched the alert
+    // stays on the live map (orange) but no longer calls for attention here.
+    const alerts = allAlerts.filter(a => a.status === 'pending');
 
     const latest = alerts[0];
     const [elapsed, setElapsed] = useState(() => (latest ? elapsedLabel(latest.triggered_at) : ''));

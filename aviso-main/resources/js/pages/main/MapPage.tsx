@@ -19,6 +19,7 @@ import { toast } from '@/lib/toast';
 import { useSosAlerts } from '@/components/sos/SosAlertProvider';
 import { type HazardLog, type SosAlertPayload } from '@/types/models';
 import { type EmergencyAlert, type LngLat } from './components/map/riderData';
+import { type DispatchFormData, type ResolveFormData } from './components/sos/dispatchOptions';
 
 const STYLE_STANDARD = 'mapbox://styles/mapbox/standard';
 
@@ -63,6 +64,21 @@ function toEmergencyAlert(data: SosAlertPayload): EmergencyAlert {
         triggerType: data.trigger_type ?? null,
         hazardBefore: data.hazard_before ?? null,
         status: data.status,
+        dispatch: {
+            dispatched_at: data.dispatched_at ?? null,
+            responder_agency: data.responder_agency ?? null,
+            responder_agency_other: data.responder_agency_other ?? null,
+            agency_label: data.agency_label ?? null,
+            responder_first_name: data.responder_first_name ?? null,
+            responder_last_name: data.responder_last_name ?? null,
+            eta_minutes: data.eta_minutes ?? null,
+            on_scene_at: data.on_scene_at ?? null,
+            outcome: data.outcome ?? null,
+            outcome_label: data.outcome_label ?? null,
+            resolution_note: data.resolution_note ?? null,
+            resolved_at: data.resolved_at ?? null,
+            handled_by_name: data.handled_by_name ?? null,
+        },
     };
 }
 
@@ -126,7 +142,7 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
     // Live emergencies come from the global SOS provider, which owns the single
     // riders.live subscription and the alarm audio for the whole admin session.
     // This page only maps each alert into the panel's display shape.
-    const { alerts, resolveAlert } = useSosAlerts();
+    const { alerts, dispatchAlert, markOnScene, resolveAlert } = useSosAlerts();
     const activeEmergencies = useMemo<EmergencyAlert[]>(
         () => alerts.map(a => toEmergencyAlert(a)),
         [alerts],
@@ -171,24 +187,46 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
     const [sosPanelOpen, setSosPanelOpen] = useState(false);
     const hideVisibleStats = sosPanelOpen || showHistorical || showHotlines;
 
-    const handleResolveHistorical = async () => {
+    // A record opened from history is normally already resolved (unresolved
+    // ones show as live emergencies instead), but every step still works on it.
+    // Each handler rejects on failure so the panel's dialog shows the reason.
+    const handleDispatchHistorical = async (data: DispatchFormData) => {
+        if (!historicalAlert) return;
+        const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+            route('sos-alerts.dispatch', historicalAlert.id),
+            data,
+        );
+        setHistoricalAlert(toEmergencyAlert(res.alert));
+        toast.success({ title: 'Help dispatched' });
+    };
+
+    const handleOnSceneHistorical = async () => {
         if (!historicalAlert) return;
         try {
-            await axios.put(route('sos-alerts.resolve', historicalAlert.id));
-            setHistoricalAlert(prev => (prev ? { ...prev, status: 'resolved' } : prev));
-
-            // Strip ?alert=<id> from the address bar. The backend serves that
-            // alert by id regardless of status, so leaving the param in place
-            // meant a refresh re-opened the record we just resolved.
-            window.history.replaceState({}, '', window.location.pathname);
-
-            toast.success({ title: 'Alert marked as resolved' });
-        } catch {
-            toast.error({
-                title: 'Failed to resolve alert',
-                description: 'Please try again.',
-            });
+            const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+                route('sos-alerts.on-scene', historicalAlert.id),
+            );
+            setHistoricalAlert(toEmergencyAlert(res.alert));
+        } catch (error) {
+            toast.error({ title: 'Failed to update', description: 'Please try again.' });
+            throw error;
         }
+    };
+
+    const handleResolveHistorical = async (data: ResolveFormData) => {
+        if (!historicalAlert) return;
+        const { data: res } = await axios.put<{ alert: SosAlertPayload }>(
+            route('sos-alerts.resolve', historicalAlert.id),
+            data,
+        );
+        setHistoricalAlert(toEmergencyAlert(res.alert));
+
+        // Strip ?alert=<id> from the address bar. The backend serves that
+        // alert by id regardless of status, so leaving the param in place
+        // meant a refresh re-opened the record we just resolved.
+        window.history.replaceState({}, '', window.location.pathname);
+
+        toast.success({ title: 'Alert marked as resolved' });
     };
 
 
@@ -296,6 +334,8 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                             theme={lightPreset}
                             hazards={filteredHazards}
                             emergencies={activeEmergencies}
+                            onDispatch={dispatchAlert}
+                            onOnScene={markOnScene}
                             onResolve={resolveAlert}
                             onPanelOpenChange={setSosPanelOpen}
                         />
@@ -315,6 +355,8 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                                     theme={lightPreset}
                                     isHistorical
                                     onClose={() => setHistoricalDismissed(true)}
+                                    onDispatch={handleDispatchHistorical}
+                                    onOnScene={handleOnSceneHistorical}
                                     onResolve={handleResolveHistorical}
                                 />
                             </>
