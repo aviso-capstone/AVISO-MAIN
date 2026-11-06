@@ -79,7 +79,7 @@ class HazardLogService
      */
     private function attachProofPhotos(iterable $logs): void
     {
-        $logs = collect($logs);
+        $logs = new \Illuminate\Database\Eloquent\Collection($logs);
         $resolvedIds = $logs->where('status', HazardLog::STATUS_RESOLVED)->pluck('id');
 
         $reports = $resolvedIds->isEmpty()
