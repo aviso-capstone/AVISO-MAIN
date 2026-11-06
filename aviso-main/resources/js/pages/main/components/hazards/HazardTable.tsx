@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LIMITS } from '@/lib/sanitize';
 import { router } from "@inertiajs/react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -114,6 +115,7 @@ export function HazardTable({
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Search code or rider..."
+                        maxLength={LIMITS.search}
                         className="pl-9 bg-background"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}

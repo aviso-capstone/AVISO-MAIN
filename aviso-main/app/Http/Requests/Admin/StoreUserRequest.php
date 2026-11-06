@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Http\Requests\Concerns\NormalizesPersonNames;
+use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\InputRules;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rules\Password;
 
 class StoreUserRequest extends FormRequest
 {
-    use NormalizesPersonNames;
+    use NormalizesInput;
 
     public function authorize(): bool
     {
@@ -22,13 +22,18 @@ class StoreUserRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'first_name'     => ['required', 'string', 'max:255'],
-            'middle_name'    => ['nullable', 'string', 'max:255'],
-            'last_name'      => ['required', 'string', 'max:255'],
-            'username'       => ['required', 'string', 'max:255', 'unique:users'],
-            'email'          => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'contact_number' => ['nullable', 'string', 'max:20'],
-            'password'       => ['required', 'string', Password::min(8)->mixedCase(), 'confirmed'],
+            'first_name'     => ['required', ...InputRules::personName()],
+            'middle_name'    => ['nullable', ...InputRules::personName()],
+            'last_name'      => ['required', ...InputRules::personName()],
+            'username'       => ['required', ...InputRules::username(), 'unique:users'],
+            'email'          => ['required', ...InputRules::email(), 'unique:users'],
+            'contact_number' => ['nullable', ...InputRules::phMobile()],
+            'password'       => ['required', ...InputRules::password()],
         ];
+    }
+
+    public function messages(): array
+    {
+        return InputRules::messages();
     }
 }

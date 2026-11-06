@@ -16,7 +16,6 @@ import {
     Search,
     UserCircle,
     Shield,
-    Trash2,
     Edit,
     ChevronLeft,
     ChevronRight,
@@ -40,7 +39,7 @@ import { type User, type PaginatedData } from '@/types/models';
 import { type PageProps } from '@/types';
 import { toast } from '@/lib/toast';
 import { UserViewModal } from './UserViewModal';
-import { sanitizeText, sanitizeAlphanumeric } from '@/lib/sanitize';
+import { LIMITS, sanitizeText, sanitizeUsername } from '@/lib/sanitize';
 
 /** The Users page tab. */
 export type UsersTab = 'rider' | 'admin';
@@ -61,13 +60,11 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
     const [userToToggle, setUserToToggle] = useState<User | null>(null);
     const [toggling, setToggling] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [userToDelete, setUserToDelete] = useState<User | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
 
-    const { data: formData, setData: setFormData, transform, post, put, delete: destroy, processing, errors, reset, clearErrors } = useForm({
+    const { data: formData, setData: setFormData, transform, post, put, processing, errors, reset, clearErrors } = useForm({
         first_name: '',
         middle_name: '',
         last_name: '',
@@ -89,7 +86,7 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
         first_name:      sanitizeText(data.first_name),
         middle_name:     sanitizeText(data.middle_name),
         last_name:       sanitizeText(data.last_name),
-        username:        sanitizeAlphanumeric(data.username),
+        username:        sanitizeUsername(data.username),
         contact_number:  sanitizeText(data.contact_number),
         street:          sanitizeText(data.street),
     }));
@@ -163,22 +160,10 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
         }
     };
 
-    const confirmDelete = (user: User) => {
-        setUserToDelete(user);
-        setIsDeleteModalOpen(true);
-    };
-
-    const executeDelete = () => {
-        if (!userToDelete) return;
-        destroy(route('users.destroy', userToDelete.id), {
-            onSuccess: () => setIsDeleteModalOpen(false),
-            onError: () => {
-                toast.error('Failed to delete rider');
-            }
-        });
-    };
-
-    /** Deactivate an active admin, or reactivate a deactivated one. */
+    /**
+     * Deactivate an active account, or reactivate a deactivated one. Accounts
+     * are never deleted: hazards, trips, crash logs and SOS history stay linked.
+     */
     const executeToggle = () => {
         if (!userToToggle) return;
         router.patch(
@@ -206,6 +191,7 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search name, username, email..."
+                            maxLength={LIMITS.search}
                             className="pl-9 bg-background"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
@@ -231,9 +217,8 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                                 <TableHead className="font-semibold">Username</TableHead>
                                 <TableHead className="font-semibold">Email</TableHead>
                                 <TableHead className="font-semibold">Contact</TableHead>
-                                {isAdminTab
-                                    ? <TableHead className="font-semibold">Status</TableHead>
-                                    : <TableHead className="font-semibold">Address</TableHead>}
+                                {!isAdminTab && <TableHead className="font-semibold">Address</TableHead>}
+                                <TableHead className="font-semibold">Status</TableHead>
                                 <TableHead className="font-semibold">Created At</TableHead>
                                 <TableHead className="font-semibold text-right">Actions</TableHead>
                             </TableRow>
@@ -241,7 +226,7 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                         <TableBody>
                             {users.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                    <TableCell colSpan={isAdminTab ? 7 : 8} className="h-32 text-center text-muted-foreground">
                                         {isAdminTab ? 'No admins found.' : 'No riders found.'}
                                     </TableCell>
                                 </TableRow>
@@ -254,22 +239,21 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                                         <TableCell className="text-muted-foreground">@{user.username}</TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell className="text-muted-foreground">{user.contact_number || '—'}</TableCell>
-                                        {isAdminTab ? (
-                                            <TableCell>
-                                                {isDeactivated(user) ? (
-                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground">Deactivated</Badge>
-                                                ) : (
-                                                    <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                                                        <Shield className="w-3 h-3 mr-1" aria-hidden="true" />
-                                                        Active
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                        ) : (
+                                        {!isAdminTab && (
                                             <TableCell className="text-muted-foreground max-w-[180px] truncate" title={user.address || undefined}>
                                                 {user.address || '—'}
                                             </TableCell>
                                         )}
+                                        <TableCell>
+                                            {isDeactivated(user) ? (
+                                                <Badge variant="secondary" className="bg-muted text-muted-foreground">Deactivated</Badge>
+                                            ) : (
+                                                <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                                    {isAdminTab && <Shield className="w-3 h-3 mr-1" aria-hidden="true" />}
+                                                    Active
+                                                </Badge>
+                                            )}
+                                        </TableCell>
                                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                             {new Date(user.created_at).toLocaleDateString()}
                                         </TableCell>
@@ -283,8 +267,7 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEditModal(user)} aria-label={`Edit ${user.first_name} ${user.last_name}`}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
-                                                {isAdminTab ? (
-                                                    user.id !== currentUserId && (
+                                                {user.id !== currentUserId && (
                                                         isDeactivated(user) ? (
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-600/10" onClick={() => setUserToToggle(user)} aria-label={`Reactivate ${user.first_name} ${user.last_name}`} title="Reactivate">
                                                                 <UserCheck className="h-4 w-4" />
@@ -294,11 +277,6 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                                                                 <UserX className="h-4 w-4" />
                                                             </Button>
                                                         )
-                                                    )
-                                                ) : (
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => confirmDelete(user)} aria-label={`Delete ${user.first_name} ${user.last_name}`}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
                                                 )}
                                             </div>
                                         </TableCell>
@@ -371,48 +349,27 @@ export function UserManager({ users, search, tab }: UserManagerProps) {
                 setFormData={setFormData}
             />
 
-            {/* Delete Confirmation Modal */}
-            <AlertDialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-                <AlertDialogContent className="sm:max-w-[400px]">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle className="text-destructive">Delete Rider</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to delete the rider account for{' '}
-                            <strong>{userToDelete?.first_name} {userToDelete?.last_name}</strong>?
-                            This action cannot be undone.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={executeDelete}
-                            disabled={processing}
-                            className="bg-destructive text-white hover:bg-destructive/90"
-                        >
-                            Delete Rider
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Deactivate / Reactivate Admin Confirmation */}
+            {/* Deactivate / Reactivate Confirmation */}
             <AlertDialog open={userToToggle !== null} onOpenChange={(open) => { if (!open && !toggling) setUserToToggle(null); }}>
                 <AlertDialogContent className="sm:max-w-[420px]">
                     {userToToggle && (isDeactivated(userToToggle) ? (
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Reactivate Admin</AlertDialogTitle>
+                            <AlertDialogTitle>{isAdminTab ? 'Reactivate Admin' : 'Reactivate Rider'}</AlertDialogTitle>
                             <AlertDialogDescription>
                                 Reactivate <strong>{userToToggle.first_name} {userToToggle.last_name}</strong>?
-                                They will be able to log in to the admin website again with their current password.
+                                {isAdminTab
+                                    ? ' They will be able to log in to the admin website again with their current password.'
+                                    : ' They will be able to log in to the AVISO app again with their current password.'}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                     ) : (
                         <AlertDialogHeader>
-                            <AlertDialogTitle className="text-destructive">Deactivate Admin</AlertDialogTitle>
+                            <AlertDialogTitle className="text-destructive">{isAdminTab ? 'Deactivate Admin' : 'Deactivate Rider'}</AlertDialogTitle>
                             <AlertDialogDescription>
                                 Deactivate <strong>{userToToggle.first_name} {userToToggle.last_name}</strong>?
-                                They will be logged out and can't log in until reactivated. Their name stays on
-                                the SOS alerts, hazards and reports they handled.
+                                {isAdminTab
+                                    ? " They will be logged out and can't log in until reactivated. Their name stays on the SOS alerts, hazards and reports they handled."
+                                    : " They will be logged out of the AVISO app and can't log in or send an SOS from the app until reactivated. Their hazard logs, trips, crash logs and SOS history are kept."}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                     ))}

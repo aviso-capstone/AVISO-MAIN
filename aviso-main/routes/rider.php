@@ -22,14 +22,14 @@ use App\Http\Middleware\RequireRiderRole;
 Route::prefix('rider')->group(function () {
 
     // ── Auth (public) ──────────────────────────────────────────────────────────
-    Route::post('/auth/login',       [RiderAuthController::class, 'login']);
-    Route::post('/auth/register',    [RiderAuthController::class, 'register']);
-    Route::post('/auth/verify-otp',  [RiderAuthController::class, 'verifyOtp']);
-    Route::post('/auth/resend-otp',  [RiderAuthController::class, 'resendOtp']);
+    Route::post('/auth/login',       [RiderAuthController::class, 'login'])->middleware('throttle:6,1');
+    Route::post('/auth/register',    [RiderAuthController::class, 'register'])->middleware('throttle:3,1');
+    Route::post('/auth/verify-otp',  [RiderAuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
+    Route::post('/auth/resend-otp',  [RiderAuthController::class, 'resendOtp'])->middleware('throttle:3,1');
 
-    Route::post('/auth/forgot-password',        [RiderAuthController::class, 'sendForgotPasswordOtp']);
-    Route::post('/auth/forgot-password/verify', [RiderAuthController::class, 'verifyForgotPasswordOtp']);
-    Route::post('/auth/forgot-password/reset',  [RiderAuthController::class, 'resetForgotPassword']);
+    Route::post('/auth/forgot-password',        [RiderAuthController::class, 'sendForgotPasswordOtp'])->middleware('throttle:3,1');
+    Route::post('/auth/forgot-password/verify', [RiderAuthController::class, 'verifyForgotPasswordOtp'])->middleware('throttle:10,1');
+    Route::post('/auth/forgot-password/reset',  [RiderAuthController::class, 'resetForgotPassword'])->middleware('throttle:10,1');
 
     // ── Address lookup (public — PSGC data needs no auth, used by signup too) ─
     Route::get('/address/provinces',         [AddressController::class, 'provinces']);
@@ -93,7 +93,7 @@ Route::prefix('rider')->group(function () {
         Route::post('/notifications/{id}/read',   [NotificationController::class, 'markRead'])->middleware('throttle:60,1');
 
         // ── Text-to-speech proxy (OpenAI key stays server-side, never in mobile bundle) ──
-        Route::post('/tts', [TtsController::class, 'speak']);
+        Route::post('/tts', [TtsController::class, 'speak'])->middleware('throttle:20,1');
 
     });
 });

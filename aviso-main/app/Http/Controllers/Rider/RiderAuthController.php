@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Rider;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Rider\EmailRequest;
 use App\Http\Requests\Rider\LoginRequest;
 use App\Http\Requests\Rider\RegisterRequest;
+use App\Http\Requests\Rider\ResetPasswordRequest;
+use App\Http\Requests\Rider\VerifyOtpRequest;
 use App\Services\RiderAuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,10 +20,14 @@ class RiderAuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $result = $this->riderAuthService->attemptLogin(
-            $request->input('email'),
-            $request->password
-        );
+        try {
+            $result = $this->riderAuthService->attemptLogin(
+                $request->input('email'),
+                $request->password
+            );
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'account_deactivated'], 403);
+        }
 
         if (!$result) {
             return response()->json(['message' => 'Invalid credentials.'], 401);
@@ -43,14 +50,13 @@ class RiderAuthController extends Controller
         return response()->json(['message' => 'Verification code sent to your email.'], 201);
     }
 
-    public function verifyOtp(Request $request): JsonResponse
+    public function verifyOtp(VerifyOtpRequest $request): JsonResponse
     {
-        $request->validate([
-            'email' => ['required', 'email'],
-            'otp'   => ['required', 'digits:6'],
-        ]);
-
-        $result = $this->riderAuthService->verifyOtp($request->email, $request->otp);
+        try {
+            $result = $this->riderAuthService->verifyOtp($request->email, $request->otp);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'account_deactivated'], 403);
+        }
 
         if (!$result) {
             return response()->json(['message' => 'Invalid or expired verification code.'], 422);
@@ -59,10 +65,8 @@ class RiderAuthController extends Controller
         return response()->json($result);
     }
 
-    public function resendOtp(Request $request): JsonResponse
+    public function resendOtp(EmailRequest $request): JsonResponse
     {
-        $request->validate(['email' => ['required', 'email']]);
-
         $sent = $this->riderAuthService->resendOtp($request->email);
 
         if (!$sent) {
@@ -72,10 +76,8 @@ class RiderAuthController extends Controller
         return response()->json(['message' => 'Verification code resent.']);
     }
 
-    public function sendForgotPasswordOtp(Request $request): JsonResponse
+    public function sendForgotPasswordOtp(EmailRequest $request): JsonResponse
     {
-        $request->validate(['email' => ['required', 'email']]);
-
         $sent = $this->riderAuthService->sendForgotPasswordOtp($request->email);
 
         if (!$sent) {
@@ -85,13 +87,8 @@ class RiderAuthController extends Controller
         return response()->json(['message' => 'Reset code sent to your email.']);
     }
 
-    public function verifyForgotPasswordOtp(Request $request): JsonResponse
+    public function verifyForgotPasswordOtp(VerifyOtpRequest $request): JsonResponse
     {
-        $request->validate([
-            'email' => ['required', 'email'],
-            'otp'   => ['required', 'digits:6'],
-        ]);
-
         $token = $this->riderAuthService->verifyForgotPasswordOtp($request->email, $request->otp);
 
         if (!$token) {
@@ -101,14 +98,8 @@ class RiderAuthController extends Controller
         return response()->json(['reset_token' => $token]);
     }
 
-    public function resetForgotPassword(Request $request): JsonResponse
+    public function resetForgotPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $request->validate([
-            'reset_token'           => ['required', 'string'],
-            'password'              => ['required', 'string', 'min:8', 'confirmed'],
-            'password_confirmation' => ['required', 'string'],
-        ]);
-
         $success = $this->riderAuthService->resetPassword($request->reset_token, $request->password);
 
         if (!$success) {

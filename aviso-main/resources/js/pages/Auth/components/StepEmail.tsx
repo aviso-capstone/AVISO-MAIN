@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LIMITS } from '@/lib/sanitize';
 import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,7 @@ export function StepEmail({ onSuccess }: Props) {
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                             <Input
                                 id="fp-email"
+                                maxLength={LIMITS.email}
                                 type="email"
                                 value={email}
                                 onChange={(e) => {

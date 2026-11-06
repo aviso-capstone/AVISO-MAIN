@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { User } from '@/types/models';
 import { toast } from '@/lib/toast';
+import { LIMITS, sanitizeContactName, sanitizePhone, sanitizeRelationship } from '@/lib/sanitize';
 import { Trash2, Plus, PhoneCall, Shield, UserCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -152,30 +153,33 @@ export function UserViewModal({ user, isOpen, onClose }: UserViewModalProps) {
                                     <div className="space-y-1.5">
                                         <Label htmlFor="contact_name">Name</Label>
                                         <Input 
-                                            id="contact_name" 
+                                            id="contact_name"
+                                            maxLength={LIMITS.name} 
                                             placeholder="John Doe" 
                                             value={formData.name} 
-                                            onChange={(e) => setFormData('name', e.target.value)} 
+                                            onChange={(e) => setFormData('name', sanitizeContactName(e.target.value))} 
                                             required 
                                         />
                                     </div>
                                     <div className="space-y-1.5">
                                         <Label htmlFor="contact_relationship">Relationship</Label>
                                         <Input 
-                                            id="contact_relationship" 
+                                            id="contact_relationship"
+                                            maxLength={LIMITS.relationship} 
                                             placeholder="e.g. Spouse, Parent" 
                                             value={formData.relationship} 
-                                            onChange={(e) => setFormData('relationship', e.target.value)} 
+                                            onChange={(e) => setFormData('relationship', sanitizeRelationship(e.target.value))} 
                                         />
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label htmlFor="contact_number">Contact Number</Label>
                                     <Input 
-                                        id="contact_number" 
+                                        id="contact_number"
+                                        maxLength={LIMITS.phone} 
                                         placeholder="+63 900 000 0000" 
                                         value={formData.contact_number} 
-                                        onChange={(e) => setFormData('contact_number', e.target.value)} 
+                                        onChange={(e) => setFormData('contact_number', sanitizePhone(e.target.value))} 
                                         required 
                                     />
                                 </div>

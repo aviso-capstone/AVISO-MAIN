@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { type User } from "@/types/models";
-import { sanitizeText, sanitizeAlphanumeric } from "@/lib/sanitize";
+import { LIMITS, sanitizeName, sanitizePhone, sanitizeText, sanitizeUsername } from "@/lib/sanitize";
 import { PasswordChecker } from "@/components/ui/PasswordChecker";
 import { AddressFields, type AddressValue } from './AddressFields';
 
@@ -75,8 +75,9 @@ export function UserFormDialog({
                                 <Label htmlFor="first_name">First Name</Label>
                                 <Input
                                     id="first_name"
+                                    maxLength={LIMITS.name}
                                     value={formData.first_name}
-                                    onChange={e => setFormData('first_name', e.target.value)}
+                                    onChange={e => setFormData('first_name', sanitizeName(e.target.value))}
                                     onBlur={e => setFormData('first_name', sanitizeText(e.target.value))}
                                     required
                                 />
@@ -86,8 +87,9 @@ export function UserFormDialog({
                                 <Label htmlFor="last_name">Last Name</Label>
                                 <Input
                                     id="last_name"
+                                    maxLength={LIMITS.name}
                                     value={formData.last_name}
-                                    onChange={e => setFormData('last_name', e.target.value)}
+                                    onChange={e => setFormData('last_name', sanitizeName(e.target.value))}
                                     onBlur={e => setFormData('last_name', sanitizeText(e.target.value))}
                                     required
                                 />
@@ -101,8 +103,9 @@ export function UserFormDialog({
                             </Label>
                             <Input
                                 id="middle_name"
+                                maxLength={LIMITS.name}
                                 value={formData.middle_name}
-                                onChange={e => setFormData('middle_name', e.target.value)}
+                                onChange={e => setFormData('middle_name', sanitizeName(e.target.value))}
                                 onBlur={e => setFormData('middle_name', sanitizeText(e.target.value))}
                                 placeholder="Middle name"
                             />
@@ -113,8 +116,9 @@ export function UserFormDialog({
                             <Label htmlFor="username">Username</Label>
                             <Input
                                 id="username"
+                                maxLength={LIMITS.username}
                                 value={formData.username}
-                                onChange={e => setFormData('username', sanitizeAlphanumeric(e.target.value))}
+                                onChange={e => setFormData('username', sanitizeUsername(e.target.value))}
                                 disabled={editingUser?.role === 'rider'}
                                 autoComplete="off"
                                 required
@@ -126,6 +130,7 @@ export function UserFormDialog({
                             <Label htmlFor="email">Email Address</Label>
                             <Input
                                 id="email"
+                                maxLength={LIMITS.email}
                                 type="email"
                                 value={formData.email}
                                 onChange={e => setFormData('email', e.target.value)}
@@ -141,8 +146,9 @@ export function UserFormDialog({
                             </Label>
                             <Input
                                 id="contact_number"
+                                maxLength={LIMITS.phone}
                                 value={formData.contact_number}
-                                onChange={e => setFormData('contact_number', e.target.value)}
+                                onChange={e => setFormData('contact_number', sanitizePhone(e.target.value))}
                                 onBlur={e => setFormData('contact_number', sanitizeText(e.target.value))}
                             />
                             {errors.contact_number && <p className="text-xs text-destructive">{errors.contact_number}</p>}
@@ -170,6 +176,7 @@ export function UserFormDialog({
                                     </Label>
                                     <Input
                                         id="password"
+                                        maxLength={LIMITS.password}
                                         type="password"
                                         autoComplete="new-password"
                                         value={formData.password}
@@ -185,6 +192,7 @@ export function UserFormDialog({
                                         <Label htmlFor="password_confirmation">Confirm Password</Label>
                                         <Input
                                             id="password_confirmation"
+                                            maxLength={LIMITS.password}
                                             type="password"
                                             value={formData.password_confirmation}
                                             onChange={e => setFormData('password_confirmation', e.target.value)}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LIMITS } from '@/lib/sanitize';
 import { router } from "@inertiajs/react";
 import axios from "axios";
 import { Card } from "@/components/ui/card";
@@ -178,6 +179,7 @@ export function SosTable({ riders, filters }: SosTableProps) {
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Search rider name or username..."
+                        maxLength={LIMITS.search}
                         className="pl-9 bg-background"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}

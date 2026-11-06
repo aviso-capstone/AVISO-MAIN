@@ -70,7 +70,6 @@ Route::middleware('web')->group(function () {
         Route::post('/users', [\App\Http\Controllers\Admin\UserController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'update'])->name('users.update');
         Route::patch('/users/{user}/active', [\App\Http\Controllers\Admin\UserController::class, 'setActive'])->name('users.active');
-        Route::delete('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'destroy'])->name('users.destroy');
 
         // Emergency Contacts
         Route::get('/users/{user}/emergency-contacts', [\App\Http\Controllers\Admin\EmergencyContactController::class, 'index'])->name('users.emergency-contacts.index');

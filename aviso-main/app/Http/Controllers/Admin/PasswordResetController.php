@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ForgotPasswordEmailRequest;
+use App\Http\Requests\Admin\ResetPasswordRequest;
+use App\Http\Requests\Admin\VerifyResetOtpRequest;
 use App\Services\PasswordResetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -32,11 +35,9 @@ class PasswordResetController extends Controller
     /**
      * Step 1 — Send OTP to the provided email address.
      */
-    public function sendOtp(Request $request): JsonResponse
+    public function sendOtp(ForgotPasswordEmailRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email' => ['required', 'email'],
-        ]);
+        $validated = $request->validated();
 
         // Same answer whether or not the email is an admin — no account enumeration.
         $this->passwordResetService->sendOtp($validated['email']);
@@ -50,12 +51,9 @@ class PasswordResetController extends Controller
     /**
      * Step 2 — Verify the 6-digit OTP and return a signed reset token.
      */
-    public function verifyOtp(Request $request): JsonResponse
+    public function verifyOtp(VerifyResetOtpRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email' => ['required', 'email'],
-            'otp'   => ['required', 'string', 'size:6'],
-        ]);
+        $validated = $request->validated();
 
         try {
             $token = $this->passwordResetService->verifyOtp(
@@ -78,12 +76,9 @@ class PasswordResetController extends Controller
     /**
      * Step 3 — Reset the password using the signed token from Step 2.
      */
-    public function reset(Request $request): JsonResponse
+    public function reset(ResetPasswordRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'password'              => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8)->mixedCase(), 'confirmed'],
-            'password_confirmation' => ['required', 'string'],
-        ]);
+        $validated = $request->validated();
 
         // Validate the signed token — if tampered or expired, abort
         if (!$request->hasValidSignature()) {

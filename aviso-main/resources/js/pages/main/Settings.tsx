@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { User } from '@/types/models';
 import { Sun, Moon, Monitor, User as UserIcon, Shield } from 'lucide-react';
 import { AddressFields, type AddressValue } from '@/pages/main/components/users/AddressFields';
-import { sanitizeText, sanitizeAlphanumeric } from '@/lib/sanitize';
+import { LIMITS, sanitizeName, sanitizePhone, sanitizeText, sanitizeUsername } from '@/lib/sanitize';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -111,8 +111,9 @@ export default function Settings() {
                                         <Label htmlFor="first_name">First Name</Label>
                                         <Input
                                             id="first_name"
+                                            maxLength={LIMITS.name}
                                             value={profileForm.data.first_name}
-                                            onChange={e => profileForm.setData('first_name', e.target.value)}
+                                            onChange={e => profileForm.setData('first_name', sanitizeName(e.target.value))}
                                             onBlur={e => profileForm.setData('first_name', sanitizeText(e.target.value))}
                                         />
                                         {profileForm.errors.first_name && (
@@ -123,8 +124,9 @@ export default function Settings() {
                                         <Label htmlFor="middle_name">Middle Name</Label>
                                         <Input
                                             id="middle_name"
+                                            maxLength={LIMITS.name}
                                             value={profileForm.data.middle_name}
-                                            onChange={e => profileForm.setData('middle_name', e.target.value)}
+                                            onChange={e => profileForm.setData('middle_name', sanitizeName(e.target.value))}
                                             onBlur={e => profileForm.setData('middle_name', sanitizeText(e.target.value))}
                                             placeholder="Optional"
                                         />
@@ -133,8 +135,9 @@ export default function Settings() {
                                         <Label htmlFor="last_name">Last Name</Label>
                                         <Input
                                             id="last_name"
+                                            maxLength={LIMITS.name}
                                             value={profileForm.data.last_name}
-                                            onChange={e => profileForm.setData('last_name', e.target.value)}
+                                            onChange={e => profileForm.setData('last_name', sanitizeName(e.target.value))}
                                             onBlur={e => profileForm.setData('last_name', sanitizeText(e.target.value))}
                                         />
                                         {profileForm.errors.last_name && (
@@ -148,8 +151,9 @@ export default function Settings() {
                                         <Label htmlFor="username">Username</Label>
                                         <Input
                                             id="username"
+                                            maxLength={LIMITS.username}
                                             value={profileForm.data.username}
-                                            onChange={e => profileForm.setData('username', sanitizeAlphanumeric(e.target.value))}
+                                            onChange={e => profileForm.setData('username', sanitizeUsername(e.target.value))}
                                         />
                                         {profileForm.errors.username && (
                                             <p className="text-xs text-destructive">{profileForm.errors.username}</p>
@@ -159,6 +163,7 @@ export default function Settings() {
                                         <Label htmlFor="email">Email</Label>
                                         <Input
                                             id="email"
+                                            maxLength={LIMITS.email}
                                             type="email"
                                             value={profileForm.data.email}
                                             onChange={e => profileForm.setData('email', e.target.value)}
@@ -173,8 +178,9 @@ export default function Settings() {
                                     <Label htmlFor="contact_number">Contact Number</Label>
                                     <Input
                                         id="contact_number"
+                                        maxLength={LIMITS.phone}
                                         value={profileForm.data.contact_number}
-                                        onChange={e => profileForm.setData('contact_number', e.target.value)}
+                                        onChange={e => profileForm.setData('contact_number', sanitizePhone(e.target.value))}
                                         onBlur={e => profileForm.setData('contact_number', sanitizeText(e.target.value))}
                                         placeholder="e.g. 09171234567"
                                     />
@@ -215,6 +221,7 @@ export default function Settings() {
                                     <Label htmlFor="current_password">Current Password</Label>
                                     <Input
                                         id="current_password"
+                                        maxLength={LIMITS.password}
                                         type="password"
                                         value={passwordForm.data.current_password}
                                         onChange={e => passwordForm.setData('current_password', e.target.value)}
@@ -229,6 +236,7 @@ export default function Settings() {
                                         <Label htmlFor="new_password">New Password</Label>
                                         <Input
                                             id="new_password"
+                                            maxLength={LIMITS.password}
                                             type="password"
                                             value={passwordForm.data.password}
                                             onChange={e => passwordForm.setData('password', e.target.value)}
@@ -242,6 +250,7 @@ export default function Settings() {
                                         <Label htmlFor="password_confirmation">Confirm New Password</Label>
                                         <Input
                                             id="password_confirmation"
+                                            maxLength={LIMITS.password}
                                             type="password"
                                             value={passwordForm.data.password_confirmation}
                                             onChange={e => passwordForm.setData('password_confirmation', e.target.value)}

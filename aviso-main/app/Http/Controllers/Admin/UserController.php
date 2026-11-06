@@ -6,10 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SetUserActiveRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Http\Requests\Admin\UserFilterRequest;
+
 use App\Models\User;
 use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,9 +20,9 @@ class UserController extends Controller
     {
     }
 
-    public function index(Request $request): Response
+    public function index(UserFilterRequest $request): Response
     {
-        $filters = $request->only(['search', 'role', 'sort']);
+        $filters = $request->safe()->only(['search', 'role', 'sort']);
         $filters['role'] = UserService::tab($filters);
 
         return Inertia::render('main/Users', [
@@ -46,7 +47,10 @@ class UserController extends Controller
         return back()->with('success', 'User updated successfully.');
     }
 
-    /** Deactivate or reactivate an admin account. */
+    /**
+     * Deactivate or reactivate an admin or rider. Accounts are never deleted,
+     * so hazards, trips, crash logs and SOS history keep their owner.
+     */
     public function setActive(SetUserActiveRequest $request, User $user): RedirectResponse
     {
         $active = $request->boolean('is_active');
@@ -60,17 +64,5 @@ class UserController extends Controller
         $name = trim("{$user->first_name} {$user->last_name}");
 
         return back()->with('success', $active ? "{$name} was reactivated." : "{$name} was deactivated.");
-    }
-
-    /** Riders only: admins are deactivated, so their name stays on what they handled. */
-    public function destroy(Request $request, User $user): RedirectResponse
-    {
-        if ($user->role !== 'rider') {
-            return back()->with('error', 'Admin accounts cannot be deleted. Deactivate the admin instead.');
-        }
-
-        $this->userService->deleteUser($user, $request->user());
-
-        return back()->with('success', 'Rider deleted successfully.');
     }
 }

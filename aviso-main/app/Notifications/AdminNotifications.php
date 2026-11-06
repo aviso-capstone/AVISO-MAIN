@@ -127,9 +127,13 @@ final class AdminNotifications
             : self::accounts('accounts.admin_deactivated', 'Admin deactivated', self::name($actor) . ' deactivated ' . self::name($admin) . '. They can no longer log in.', $admin, '/users?role=admin', $actor);
     }
 
-    public static function riderDeleted(User $rider, User $actor): AvisoNotification
+    public static function riderActiveChanged(User $rider, bool $active, User $actor): AvisoNotification
     {
-        return self::accounts('accounts.rider_deleted', 'Rider deleted', self::name($actor) . ' deleted rider ' . self::riderName($rider) . " (@{$rider->username}).", $rider, '/users', $actor);
+        $who = self::riderName($rider) . " (@{$rider->username})";
+
+        return $active
+            ? self::accounts('accounts.rider_reactivated', 'Rider reactivated', self::name($actor) . " reactivated rider {$who}.", $rider, '/users', $actor)
+            : self::accounts('accounts.rider_deactivated', 'Rider deactivated', self::name($actor) . " deactivated rider {$who}. They can no longer use the app.", $rider, '/users', $actor);
     }
 
     private static function accounts(string $event, string $title, string $body, User $subject, string $link, ?User $actor = null): AvisoNotification

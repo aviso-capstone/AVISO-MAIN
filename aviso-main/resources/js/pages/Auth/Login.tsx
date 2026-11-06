@@ -1,4 +1,5 @@
 import { Head, Link, useForm } from "@inertiajs/react";
+import { LIMITS } from '@/lib/sanitize';
 import { FormEventHandler, useState } from "react";
 import { toast } from "@/lib/toast";
 import { Eye, EyeOff, CheckCircle2, ShieldAlert } from "lucide-react";
@@ -89,6 +90,7 @@ export default function Login({
                             <Label htmlFor="username">Username</Label>
                             <Input
                                 id="username"
+                                maxLength={LIMITS.login}
                                 type="text"
                                 name="username"
                                 value={data.username}
@@ -113,6 +115,7 @@ export default function Login({
                             <div className="relative">
                                 <Input
                                     id="password"
+                                    maxLength={LIMITS.password}
                                     type={showPassword ? "text" : "password"}
                                     name="password"
                                     value={data.password}

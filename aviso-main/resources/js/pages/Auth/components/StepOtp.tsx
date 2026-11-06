@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -101,6 +102,8 @@ export function StepOtp({ email, onSuccess, onBack }: Props) {
                 <div className="flex justify-center mb-4">
                     <InputOTP
                         maxLength={6}
+                        pattern={REGEXP_ONLY_DIGITS}
+                        inputMode="numeric"
                         value={otp}
                         onChange={(value) => {
                             setOtp(value);

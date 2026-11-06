@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\CrashLogFilterRequest;
 use App\Models\RiderEvent;
 use App\Services\BarangayLocatorService;
 use App\Services\RiderEventService;
@@ -21,11 +22,12 @@ class CrashDetectionLogsController extends Controller
         private BarangayLocatorService $barangayLocator,
     ) {}
 
-    public function index(Request $request)
+    public function index(CrashLogFilterRequest $request)
     {
-        $filters = $request->only(['type', 'search', 'barangay', 'from', 'to', 'per_page']);
+        $filters = $request->safe()->only(['type', 'search', 'barangay', 'from', 'to', 'per_page']);
 
-        if ($request->input('export') === 'csv') {
+        if ($request->validated('export') === 'csv') {
+
             return $this->riderEventService->csvResponse($filters);
         }
 

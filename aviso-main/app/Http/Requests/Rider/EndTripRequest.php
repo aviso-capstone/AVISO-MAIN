@@ -25,6 +25,7 @@ class EndTripRequest extends FormRequest
             'route_points'       => ['nullable', 'array', 'max:10000'],
             'route_points.*.lat' => ['required_with:route_points', 'numeric', 'between:-90,90'],
             'route_points.*.lng' => ['required_with:route_points', 'numeric', 'between:-180,180'],
+            'route_points.*.ts'  => ['nullable', 'date'],
         ];
     }
 }

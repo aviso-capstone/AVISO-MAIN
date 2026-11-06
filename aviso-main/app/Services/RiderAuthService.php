@@ -10,9 +10,14 @@ use App\Notifications\AdminNotifications;
 use App\Notifications\RiderNotifications;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
 
 class RiderAuthService
 {
+    /** Wrong guesses allowed per code before it is thrown away (same as the admin reset). */
+    private const MAX_OTP_ATTEMPTS = 5;
+
     public function __construct(private NotificationService $notifications)
     {
         //
@@ -29,6 +34,11 @@ class RiderAuthService
 
         if (!$user || !Hash::check($password, $user->password)) {
             return null;
+        }
+
+        // Told only after the right password, so the message can't be used to probe accounts.
+        if ($user->isDeactivated()) {
+            throw new \DomainException(User::DEACTIVATED_MESSAGE);
         }
 
         $token = $user->createToken('rider-app')->plainTextToken;
@@ -74,6 +84,7 @@ class RiderAuthService
         );
 
         PasswordResetOtp::where('email', $data['email'])->delete();
+        RateLimiter::clear($this->otpAttemptsKey($data['email']));
 
         $otp = (string) random_int(100000, 999999);
 
@@ -89,12 +100,9 @@ class RiderAuthService
 
     public function verifyOtp(string $email, string $otp): ?array
     {
-        $record = PasswordResetOtp::where('email', $email)
-            ->where('otp', $otp)
-            ->latest()
-            ->first();
+        $record = $this->checkOtp($email, $otp);
 
-        if (!$record || $record->isExpired()) {
+        if (!$record) {
             return null;
         }
 
@@ -104,9 +112,14 @@ class RiderAuthService
             return null;
         }
 
+        if ($user->isDeactivated()) {
+            throw new \DomainException(User::DEACTIVATED_MESSAGE);
+        }
+
         $isNewRider = $user->email_verified_at === null;
         $user->update(['email_verified_at' => now()]);
         $record->delete();
+        RateLimiter::clear($this->otpAttemptsKey($email));
 
         // A new rider counts once their email is verified.
         if ($isNewRider) {
@@ -141,6 +154,7 @@ class RiderAuthService
         }
 
         PasswordResetOtp::where('email', $email)->delete();
+        RateLimiter::clear($this->otpAttemptsKey($email));
 
         $otp = (string) random_int(100000, 999999);
 
@@ -168,6 +182,7 @@ class RiderAuthService
         }
 
         PasswordResetOtp::where('email', $email)->delete();
+        RateLimiter::clear($this->otpAttemptsKey($email));
 
         $otp = (string) random_int(100000, 999999);
 
@@ -185,16 +200,14 @@ class RiderAuthService
 
     public function verifyForgotPasswordOtp(string $email, string $otp): ?string
     {
-        $record = PasswordResetOtp::where('email', $email)
-            ->where('otp', $otp)
-            ->latest()
-            ->first();
+        $record = $this->checkOtp($email, $otp);
 
-        if (!$record || $record->isExpired()) {
+        if (!$record) {
             return null;
         }
 
         $record->delete();
+        RateLimiter::clear($this->otpAttemptsKey($email));
 
         return encrypt([
             'email' => $email,
@@ -228,4 +241,42 @@ class RiderAuthService
         return true;
     }
 
+    /**
+     * The rider's current code if $otp matches it and it has not expired.
+     * Every wrong guess is counted; after MAX_OTP_ATTEMPTS the code is deleted,
+     * so a 6-digit code cannot be guessed by trying many numbers.
+     *
+     * @throws ValidationException when the code was just thrown away
+     */
+    private function checkOtp(string $email, string $otp): ?PasswordResetOtp
+    {
+        $record = PasswordResetOtp::where('email', $email)->latest()->first();
+
+        if (!$record || $record->isExpired()) {
+            return null;
+        }
+
+        if (hash_equals((string) $record->otp, $otp)) {
+            return $record;
+        }
+
+        $key = $this->otpAttemptsKey($email);
+        RateLimiter::hit($key, 600);
+
+        if (RateLimiter::tooManyAttempts($key, self::MAX_OTP_ATTEMPTS)) {
+            $record->delete();
+            RateLimiter::clear($key);
+
+            throw ValidationException::withMessages([
+                'otp' => 'Too many incorrect attempts. Please request a new code.',
+            ]);
+        }
+
+        return null;
+    }
+
+    private function otpAttemptsKey(string $email): string
+    {
+        return 'rider-otp-attempts:' . sha1(mb_strtolower($email));
+    }
 }

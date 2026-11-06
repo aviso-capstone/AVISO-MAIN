@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Rider;
 
 use App\Models\EmergencyAlert;
+use App\Support\InputRules;
+use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -11,6 +13,30 @@ class SosRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * An SOS is never refused because of the phone's clock: a time in the
+     * future or older than 30 days is dropped, so the server uses "now".
+     */
+    protected function prepareForValidation(): void
+    {
+        $at = $this->input('triggered_at');
+        if (! is_string($at) || $at === '') {
+            return;
+        }
+
+        try {
+            $time   = Carbon::parse($at);
+            $usable = $time->lessThanOrEqualTo(Carbon::parse(InputRules::APP_TIME_AHEAD))
+                && $time->greaterThanOrEqualTo(Carbon::parse(InputRules::APP_TIME_BEHIND));
+        } catch (\Throwable) {
+            $usable = false;
+        }
+
+        if (! $usable) {
+            $this->merge(['triggered_at' => null]);
+        }
     }
 
     public function rules(): array

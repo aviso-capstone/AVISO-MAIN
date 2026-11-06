@@ -2,24 +2,33 @@
 
 namespace App\Http\Requests\Rider;
 
-use App\Http\Requests\Concerns\NormalizesPersonNames;
+use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\InputRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class UpdatePersonalInfoRequest extends FormRequest
 {
-    use NormalizesPersonNames;
+    use NormalizesInput;
 
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {
-        $userId = Auth::id();
         return [
-            'first_name'     => ['sometimes', 'string', 'max:50'],
-            'last_name'      => ['sometimes', 'string', 'max:50'],
-            'email'          => ['sometimes', 'email', 'max:255', "unique:users,email,{$userId}"],
-            'contact_number' => ['sometimes', 'string', 'max:20'],
+            'first_name'     => ['sometimes', 'required', ...InputRules::personName()],
+            'last_name'      => ['sometimes', 'required', ...InputRules::personName()],
+            'email'          => ['sometimes', 'required', ...InputRules::email(), Rule::unique('users', 'email')->ignore(Auth::id())],
+            'contact_number' => ['sometimes', 'required', ...InputRules::phMobile()],
         ];
+    }
+
+    public function messages(): array
+    {
+        return InputRules::messages();
     }
 }

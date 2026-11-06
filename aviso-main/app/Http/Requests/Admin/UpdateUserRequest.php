@@ -2,14 +2,14 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Http\Requests\Concerns\NormalizesPersonNames;
+use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\InputRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 class UpdateUserRequest extends FormRequest
 {
-    use NormalizesPersonNames;
+    use NormalizesInput;
 
     public function authorize(): bool
     {
@@ -21,12 +21,12 @@ class UpdateUserRequest extends FormRequest
         $user = $this->route('user');
 
         $rules = [
-            'first_name'     => ['required', 'string', 'max:255'],
-            'middle_name'    => ['nullable', 'string', 'max:255'],
-            'last_name'      => ['required', 'string', 'max:255'],
-            'contact_number' => ['nullable', 'string', 'max:20'],
+            'first_name'     => ['required', ...InputRules::personName()],
+            'middle_name'    => ['nullable', ...InputRules::personName()],
+            'last_name'      => ['required', ...InputRules::personName()],
+            'contact_number' => ['nullable', ...InputRules::phMobile()],
             'address'        => ['nullable', 'string', 'max:1000'],
-            'street'         => ['nullable', 'string', 'max:255'],
+            'street'         => ['nullable', ...InputRules::street()],
             'barangay_id'    => ['nullable', 'string', 'exists:barangays,code'],
             'city_id'        => ['nullable', 'string', 'exists:cities,city_id'],
             'province_id'    => ['nullable', 'string', 'exists:provinces,province_id'],
@@ -36,14 +36,19 @@ class UpdateUserRequest extends FormRequest
         // The role is never editable: an admin stays an admin and a rider stays
         // a rider (a rider account is only ever made by signing up in the app).
         if ($user->role !== 'rider') {
-            $rules['username'] = ['required', 'string', 'max:255', Rule::unique('users')->ignore($user->id)];
-            $rules['email']    = ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)];
+            $rules['username'] = ['required', ...InputRules::username(), Rule::unique('users')->ignore($user->id)];
+            $rules['email']    = ['required', ...InputRules::email(), Rule::unique('users')->ignore($user->id)];
 
             if ($this->filled('password')) {
-                $rules['password'] = ['required', 'string', Password::min(8)->mixedCase(), 'confirmed'];
+                $rules['password'] = ['required', ...InputRules::password()];
             }
         }
 
         return $rules;
+    }
+
+    public function messages(): array
+    {
+        return InputRules::messages();
     }
 }

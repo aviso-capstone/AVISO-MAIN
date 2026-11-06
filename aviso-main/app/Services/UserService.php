@@ -97,11 +97,13 @@ class UserService
      */
     public function setActive(User $admin, bool $active, User $actor): void
     {
-        if ($admin->role !== 'admin') {
-            throw new \DomainException('Only admin accounts can be deactivated.');
+        if (! in_array($admin->role, ['admin', 'rider'], true)) {
+            throw new \DomainException('This account cannot be deactivated.');
         }
 
-        if (! $active) {
+        $isAdmin = $admin->role === 'admin';
+
+        if (! $active && $isAdmin) {
             if ($admin->is($actor)) {
                 throw new \DomainException('You cannot deactivate your own account.');
             }
@@ -121,6 +123,14 @@ class UserService
         }
 
         $admin->update(['is_active' => $active]);
+
+        if (! $isAdmin) {
+            // The app is signed out on its next request (RequireRiderRole),
+            // which also shows the rider why. Their records stay linked.
+            $this->notifications->notifyAdmins(AdminNotifications::riderActiveChanged($admin, $active, $actor));
+
+            return;
+        }
 
         if (! $active) {
             $this->signOutOtherSessions($admin);
@@ -210,17 +220,6 @@ class UserService
     /**
      * Delete a user.
      */
-    public function deleteUser(User $user, ?User $actor = null): ?bool
-    {
-        $deleted = $user->delete();
-
-        if ($deleted && $actor && $user->role === 'rider') {
-            $this->notifications->notifyAdmins(AdminNotifications::riderDeleted($user, $actor));
-        }
-
-        return $deleted;
-    }
-
     private function notifyAccountEdited(User $user, User $actor, bool $passwordChanged): void
     {
         if ($user->role === 'rider') {

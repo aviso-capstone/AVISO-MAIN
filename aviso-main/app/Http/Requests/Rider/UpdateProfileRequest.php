@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Rider;
 
+use App\Support\InputRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -16,12 +17,8 @@ class UpdateProfileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'username' => [
-                'sometimes', 'required', 'string', 'min:3', 'max:30',
-                'regex:/^[a-zA-Z0-9_]+$/',
-                Rule::unique('users', 'username')->ignore(Auth::id()),
-            ],
-            'street'      => ['nullable', 'string', 'max:255'],
+            'username'    => ['sometimes', 'required', ...InputRules::username(), Rule::unique('users', 'username')->ignore(Auth::id())],
+            'street'      => ['nullable', ...InputRules::street()],
             'barangay_id' => ['nullable', 'string', 'exists:barangays,code'],
             'city_id'     => ['nullable', 'string', 'exists:cities,city_id'],
             'province_id' => ['nullable', 'string', 'exists:provinces,province_id'],
@@ -31,8 +28,6 @@ class UpdateProfileRequest extends FormRequest
 
     public function messages(): array
     {
-        return [
-            'username.regex' => 'Username may only contain letters, numbers, and underscores.',
-        ];
+        return InputRules::messages();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Rider;
 
 use App\Models\RiderEvent;
+use App\Support\InputRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,7 +27,7 @@ class StoreRiderEventRequest extends FormRequest
             'horizontal_g' => ['nullable', 'numeric', 'between:0,100'],
             'gyro_peak_dps' => ['nullable', 'numeric', 'between:0,5000'],
             'tilt_deg' => ['nullable', 'numeric', 'between:0,180'],
-            'detected_at' => ['nullable', 'date'],
+            'detected_at' => ['nullable', ...InputRules::appTimestamp()],
         ];
     }
 }

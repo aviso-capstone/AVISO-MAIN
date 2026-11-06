@@ -9,7 +9,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useAddressCascade } from '@/hooks/useAddressCascade';
-import { sanitizeText } from '@/lib/sanitize';
+import { LIMITS, sanitizeText } from '@/lib/sanitize';
 
 export interface AddressValue {
     street:      string;
@@ -81,6 +81,7 @@ export function AddressFields({ value, onChange, errors }: AddressFieldsProps) {
                 </Label>
                 <Input
                     id="street"
+                    maxLength={LIMITS.street}
                     value={value.street}
                     onChange={e => onChange('street', e.target.value)}
                     onBlur={e => onChange('street', sanitizeText(e.target.value))}

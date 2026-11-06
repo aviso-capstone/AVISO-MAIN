@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LIMITS } from '@/lib/sanitize';
 import { Eye, EyeOff, KeyRound, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,6 +140,7 @@ export function StepNewPassword({ token, onSuccess }: Props) {
                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                             <Input
                                 id="np-password"
+                                maxLength={LIMITS.password}
                                 type={showPassword ? "text" : "password"}
                                 value={password}
                                 onChange={(e) => {
@@ -181,6 +183,7 @@ export function StepNewPassword({ token, onSuccess }: Props) {
                             <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                             <Input
                                 id="np-confirm"
+                                maxLength={LIMITS.password}
                                 type={showConfirm ? "text" : "password"}
                                 value={confirmation}
                                 onChange={(e) => {

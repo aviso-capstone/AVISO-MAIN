@@ -18,8 +18,9 @@ class RiderEventFilterRequest extends FormRequest
         return [
             'type' => ['nullable', Rule::in([...RiderEvent::TYPES, 'all'])],
             'from' => ['nullable', 'date'],
-            'to' => ['nullable', 'date'],
-            'per_page' => ['nullable', 'integer'],
+            // "to" is only compared when a "from" date was given.
+            'to' => array_filter(['nullable', 'date', $this->filled('from') ? 'after_or_equal:from' : null]),
+            'per_page' => ['nullable', 'integer', Rule::in([10, 15, 25, 50])],
         ];
     }
 }

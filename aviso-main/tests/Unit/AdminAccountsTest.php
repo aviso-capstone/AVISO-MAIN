@@ -130,26 +130,19 @@ class AdminAccountsTest extends TestCase
         $this->assertSame('rider', $rider->fresh()->role);
     }
 
-    // ── Delete riders only ───────────────────────────────────────────────
+    // ── Nobody is deleted ───────────────────────────────────────────────
 
-    public function test_an_admin_cannot_be_deleted(): void
+    public function test_there_is_no_delete_for_admins_or_riders(): void
     {
+        $actor = $this->user();
         $admin = $this->user();
-
-        $this->actingAs($this->user())->delete("/users/{$admin->id}")
-            ->assertSessionHas('error');
-
-        $this->assertNotNull($admin->fresh());
-    }
-
-    public function test_a_rider_can_be_deleted(): void
-    {
         $rider = $this->user('rider');
 
-        $this->actingAs($this->user())->delete("/users/{$rider->id}")
-            ->assertSessionHas('success');
+        $this->actingAs($actor)->delete("/users/{$admin->id}")->assertStatus(405);
+        $this->actingAs($actor)->delete("/users/{$rider->id}")->assertStatus(405);
 
-        $this->assertNull($rider->fresh());
+        $this->assertNotNull($admin->fresh());
+        $this->assertNotNull($rider->fresh());
     }
 
     // ── Deactivate / reactivate ──────────────────────────────────────────
@@ -189,13 +182,93 @@ class AdminAccountsTest extends TestCase
         app(UserService::class)->setActive($last, false, $actor);
     }
 
-    public function test_riders_cannot_be_deactivated(): void
+    public function test_a_rider_can_be_deactivated_and_reactivated_and_keeps_their_account(): void
     {
+        $actor = $this->user();
         $rider = $this->user('rider');
 
-        $this->actingAs($this->user())->patch("/users/{$rider->id}/active", ['is_active' => false])
-            ->assertSessionHas('error', 'Only admin accounts can be deactivated.');
+        $this->actingAs($actor)->patch("/users/{$rider->id}/active", ['is_active' => false])
+            ->assertSessionHas('success', 'Juan Dela Cruz was deactivated.');
+        $this->assertFalse($rider->fresh()->is_active);
+
+        $this->actingAs($actor)->patch("/users/{$rider->id}/active", ['is_active' => true])
+            ->assertSessionHas('success', 'Juan Dela Cruz was reactivated.');
         $this->assertTrue($rider->fresh()->is_active);
+    }
+
+    // ── Messages for a deactivated rider (app) ───────────────────────────
+
+    private function riderTokensTable(): void
+    {
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('tokenable');
+            $table->text('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    private function verifiedRider(bool $active = true): User
+    {
+        $rider = $this->user('rider', $active);
+        $rider->forceFill(['email_verified_at' => now()])->save();
+
+        return $rider;
+    }
+
+    public function test_a_deactivated_rider_with_the_right_password_sees_the_deactivated_message(): void
+    {
+        $this->riderTokensTable();
+        $rider = $this->verifiedRider(active: false);
+
+        $this->postJson('/api/rider/auth/login', ['email' => $rider->username, 'password' => self::PASSWORD])
+            ->assertStatus(403)
+            ->assertJson(['message' => User::DEACTIVATED_MESSAGE, 'code' => 'account_deactivated']);
+
+        $this->assertSame(0, $rider->tokens()->count(), 'no app login was created');
+    }
+
+    public function test_a_wrong_rider_password_never_reveals_that_the_account_is_deactivated(): void
+    {
+        $this->riderTokensTable();
+        $rider = $this->verifiedRider(active: false);
+
+        $this->postJson('/api/rider/auth/login', ['email' => $rider->username, 'password' => 'Wrong12345'])
+            ->assertStatus(401)
+            ->assertJson(['message' => 'Invalid credentials.']);
+    }
+
+    public function test_an_active_rider_can_still_log_in(): void
+    {
+        $this->riderTokensTable();
+        $rider = $this->verifiedRider();
+
+        $this->postJson('/api/rider/auth/login', ['email' => $rider->username, 'password' => self::PASSWORD])
+            ->assertOk()
+            ->assertJsonStructure(['token', 'user']);
+    }
+
+    public function test_a_logged_in_rider_who_gets_deactivated_is_signed_out_of_the_app_with_a_message(): void
+    {
+        $this->riderTokensTable();
+        $rider = $this->verifiedRider();
+        $token = $rider->createToken('rider-app')->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/rider/notifications/unread-count')->assertOk();
+
+        $rider->update(['is_active' => false]);
+        $this->app['auth']->forgetGuards(); // a real app request loads the user fresh
+
+        // Every rider API (SOS, hazards, trips…) goes through the same check.
+        $this->withToken($token)->postJson('/api/rider/emergency/sos', ['latitude' => 6.9, 'longitude' => 122.07])
+            ->assertStatus(403)
+            ->assertJson(['message' => User::DEACTIVATED_SESSION_MESSAGE, 'code' => 'account_deactivated']);
+
+        $this->assertSame(0, $rider->tokens()->count(), 'the app login was ended');
     }
 
     // ── Messages for a deactivated admin ─────────────────────────────────

@@ -6,6 +6,8 @@ use App\Events\EmergencyAlertTriggered;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DispatchEmergencyAlertRequest;
 use App\Http\Requests\Admin\ResolveEmergencyAlertRequest;
+use App\Http\Requests\Admin\SosAlertFilterRequest;
+
 use App\Models\EmergencyAlert;
 use App\Models\User;
 use App\Services\EmergencyAlertService;
@@ -20,9 +22,9 @@ class EmergencyAlertController extends Controller
         protected EmergencyAlertService $emergencyAlertService,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(SosAlertFilterRequest $request): Response
     {
-        $filters = $request->only(['search', 'status', 'per_page']);
+        $filters = $request->safe()->only(['search', 'status', 'per_page']);
 
         return Inertia::render('main/SosLogs', [
             'riders'  => $this->emergencyAlertService->getHistoryGroupedByRider($filters),

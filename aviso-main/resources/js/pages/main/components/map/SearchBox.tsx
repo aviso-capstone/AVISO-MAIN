@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui/card';
+import { LIMITS } from '@/lib/sanitize';
 import { Input } from '@/components/ui/input';
 import { useMap } from '@/components/ui/map';
 import { formatCoordinates, parseCoordinates } from '@/lib/coordinates';
@@ -95,6 +96,7 @@ export function SearchBox() {
             <form onSubmit={handleSearch} className="relative">
                 <Input
                     placeholder="Search a place or 6.92314, 122.08251"
+                    maxLength={LIMITS.search}
                     aria-label="Search a place or coordinates"
                     value={query}
                     onChange={e => setQuery(e.target.value)}
