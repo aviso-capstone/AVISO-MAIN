@@ -7,6 +7,8 @@ use App\Events\HazardReportSubmitted;
 use App\Models\HazardLog;
 use App\Models\HazardReport;
 use App\Models\User;
+use App\Notifications\AdminNotifications;
+use App\Notifications\RiderNotifications;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +23,7 @@ class HazardReportService
     public function __construct(
         private SecureFileUploader $fileUploader,
         private HazardLogService $hazardLogService,
+        private NotificationService $notifications,
     ) {
         //
     }
@@ -78,6 +81,7 @@ class HazardReportService
         $report->setRelation('user', $rider);
 
         $this->broadcastSafely(new HazardReportSubmitted($report));
+        $this->notifications->notifyAdmins(AdminNotifications::hazardReportSubmitted($report, $hazard, $rider));
 
         return $report;
     }
@@ -117,8 +121,39 @@ class HazardReportService
         $report->refresh();
         $event = new HazardReportReviewed($report, $closedIds, $resolvedIds);
         $this->broadcastSafely($event);
+        $this->notifyConfirmed($report, $admin, $closedIds, $resolvedIds);
 
         return $event->broadcastWith();
+    }
+
+    /**
+     * Admins: one "confirmed". Every rider whose report was closed: "thank
+     * you". Every rider who detected the hazard: one "fixed" each, however
+     * many saves of it they had.
+     *
+     * @param int[] $closedIds
+     * @param int[] $resolvedIds
+     */
+    private function notifyConfirmed(HazardReport $report, User $admin, array $closedIds, array $resolvedIds): void
+    {
+        $hazard = HazardLog::find($report->hazard_log_id);
+        if (! $hazard) {
+            return;
+        }
+
+        $this->notifications->notifyAdmins(AdminNotifications::hazardReportReviewed($report, $hazard, $admin, true));
+
+        HazardReport::with('user')->whereIn('id', $closedIds)->get()
+            ->unique('user_id')
+            ->each(fn (HazardReport $closed) => $this->notifications->notifyUser(
+                $closed->user, RiderNotifications::reportReviewed($hazard, true),
+            ));
+
+        HazardLog::with('user')->whereIn('id', $resolvedIds)->whereNotNull('user_id')->get()
+            ->unique('user_id')
+            ->each(fn (HazardLog $detected) => $this->notifications->notifyUser(
+                $detected->user, RiderNotifications::hazardFixed($detected),
+            ));
     }
 
     /**
@@ -138,6 +173,12 @@ class HazardReportService
 
         $event = new HazardReportReviewed($report, [$report->id], []);
         $this->broadcastSafely($event);
+
+        $report->loadMissing('hazard', 'user');
+        if ($report->hazard) {
+            $this->notifications->notifyAdmins(AdminNotifications::hazardReportReviewed($report, $report->hazard, $admin, false));
+            $this->notifications->notifyUser($report->user, RiderNotifications::reportReviewed($report->hazard, false));
+        }
 
         return $event->broadcastWith();
     }

@@ -33,7 +33,9 @@ import {
     type EmergencyAlert,
     type PaginatedData,
     type SosRiderSummary,
+    type SosStepSms,
 } from "@/types/models";
+import { smsStepDescription } from "@/lib/sos-sms";
 
 interface SosTableProps {
     riders: PaginatedData<SosRiderSummary>;
@@ -145,7 +147,7 @@ export function SosTable({ riders, filters }: SosTableProps) {
     const handleResolve = async (data: ResolveFormData) => {
         if (!resolving) return;
         const { alert, riderId } = resolving;
-        const { data: res } = await axios.put<{ alert: { outcome_label: string | null; resolved_at: string | null } }>(
+        const { data: res } = await axios.put<{ alert: { outcome_label: string | null; resolved_at: string | null }; sms?: SosStepSms | null }>(
             route("sos-alerts.resolve", alert.id),
             data,
         );
@@ -165,7 +167,7 @@ export function SosTable({ riders, filters }: SosTableProps) {
             ),
         }));
         router.reload({ only: ["riders", "stats"] });
-        toast.success({ title: "Alert marked as resolved" });
+        toast.success({ title: "Alert marked as resolved", description: smsStepDescription(res.sms) });
     };
 
     return (

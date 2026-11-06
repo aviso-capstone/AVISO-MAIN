@@ -13,6 +13,7 @@ import {
     Activity,
     ChevronsLeft,
     ChevronsRight,
+    Bell,
 } from "lucide-react";
 import {
     Sidebar,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useSosAlerts } from "@/components/sos/SosAlertProvider";
 import { useHazardReports } from "@/components/hazard-reports/HazardReportProvider";
+import { useNotifications } from "@/components/notifications/NotificationProvider";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -64,6 +66,11 @@ const navGroups = [
                 title: "Crash Detection Logs",
                 url: "/crash-logs",
                 icon: Activity,
+            },
+            {
+                title: "Notifications",
+                url: "/notifications",
+                icon: Bell,
             },
         ],
     },
@@ -101,6 +108,7 @@ export default function AdminSidebar() {
     // Riders' "hazard no longer there" reports wait on the Live Map.
     const { reports: hazardReports } = useHazardReports();
     const hazardReportCount = hazardReports.length;
+    const { unread: unreadNotifications } = useNotifications();
     const { state, toggleSidebar } = useSidebar();
     const collapsed = state === "collapsed";
 
@@ -207,6 +215,9 @@ export default function AdminSidebar() {
                                         !showSosCount &&
                                         hazardReportCount > 0 &&
                                         item.url === "/map";
+                                    const showUnreadCount =
+                                        unreadNotifications > 0 &&
+                                        item.url === "/notifications";
                                     return (
                                         <SidebarMenuItem key={item.title}>
                                             <SidebarMenuButton
@@ -248,6 +259,19 @@ export default function AdminSidebar() {
                                                     <span
                                                         aria-hidden
                                                         className="pointer-events-none absolute top-0.5 right-0.5 hidden h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-sidebar group-data-[collapsible=icon]:block"
+                                                    />
+                                                </>
+                                            ) : showUnreadCount ? (
+                                                <>
+                                                    <SidebarMenuBadge
+                                                        className="bg-primary text-primary-foreground font-bold"
+                                                        title={`${unreadNotifications} unread notification(s)`}
+                                                    >
+                                                        {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                                                    </SidebarMenuBadge>
+                                                    <span
+                                                        aria-hidden
+                                                        className="pointer-events-none absolute top-0.5 right-0.5 hidden h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar group-data-[collapsible=icon]:block"
                                                     />
                                                 </>
                                             ) : null}

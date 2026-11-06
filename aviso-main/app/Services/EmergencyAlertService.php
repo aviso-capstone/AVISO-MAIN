@@ -6,7 +6,10 @@ use App\Events\EmergencyAlertResolved;
 use App\Events\EmergencyAlertTriggered;
 use App\Events\EmergencyAlertUpdated;
 use App\Models\EmergencyAlert;
+use App\Models\EmergencyContact;
 use App\Models\User;
+use App\Notifications\AdminNotifications;
+use App\Notifications\RiderNotifications;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -19,6 +22,7 @@ class EmergencyAlertService
         private SmsService $smsService,
         private GeocodingService $geocodingService,
         private BarangayLocatorService $barangayLocator,
+        private NotificationService $notifications,
     ) {
         //
     }
@@ -92,7 +96,7 @@ class EmergencyAlertService
                 'trigger_type'  => $existing->trigger_type ?? $triggerType,
             ]);
             $this->broadcastQuietly(new EmergencyAlertTriggered($existing));
-            $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null, $existing->trigger_type);
+            $this->notifyEmergencyContacts($existing, $rider, $lat, $lng, $barangay['name'] ?? null, $existing->trigger_type);
             return $existing;
         }
 
@@ -112,7 +116,11 @@ class EmergencyAlertService
         $alert->setRelation('user', $rider);
         $this->broadcastQuietly(new EmergencyAlertTriggered($alert));
 
-        $this->notifyEmergencyContacts($rider, $lat, $lng, $barangay['name'] ?? null, $triggerType);
+        // Notifications page: a new alert only (a repeat of a pending one is the same emergency).
+        $this->notifications->notifyAdmins(AdminNotifications::sosTriggered($alert, $barangay['name'] ?? null));
+        $this->notifications->notifyUser($rider, RiderNotifications::sosReceived($alert));
+
+        $this->notifyEmergencyContacts($alert, $rider, $lat, $lng, $barangay['name'] ?? null, $triggerType);
 
         return $alert;
     }
@@ -148,6 +156,7 @@ class EmergencyAlertService
      * emergency hotlines so contacts know exactly who else to call.
      */
     private function notifyEmergencyContacts(
+        EmergencyAlert $alert,
         User $rider,
         float $lat,
         float $lng,
@@ -181,9 +190,64 @@ class EmergencyAlertService
         );
 
         foreach ($rider->emergencyContacts as $contact) {
-            $this->smsService->send($contact->contact_number, $message);
+            $sent = $this->smsService->send($contact->contact_number, $message);
             $this->smsService->send($contact->contact_number, self::HOTLINES_MESSAGE);
+
+            if (! $sent) {
+                $this->notifications->notifyAdmins(AdminNotifications::smsFailed($alert, $contact));
+            }
         }
+    }
+
+    public const STEP_DISPATCHED = 'dispatched';
+    public const STEP_ON_SCENE   = 'on_scene';
+    public const STEP_RESOLVED   = 'resolved';
+
+    /**
+     * Text every emergency contact one short update about a checklist step.
+     * Only the agency, ETA and outcome: never admin or responder names, never
+     * the admin's note. Called once per step, after the step was saved (the
+     * step order check stops a second click before it gets here).
+     *
+     * @return array{contacts: int, sent: int, failed: int}
+     */
+    public function textContactsAboutStep(EmergencyAlert $alert, string $step): array
+    {
+        $alert->loadMissing('user.emergencyContacts');
+        $contacts = $alert->user?->emergencyContacts ?? collect();
+        $message  = self::stepMessage($alert, $step);
+        $sent     = 0;
+
+        foreach ($contacts as $contact) {
+            if ($this->smsService->send($contact->contact_number, $message)) {
+                $sent++;
+            } else {
+                $this->notifications->notifyAdmins(AdminNotifications::smsFailed($alert, $contact));
+            }
+        }
+
+        return ['contacts' => $contacts->count(), 'sent' => $sent, 'failed' => $contacts->count() - $sent];
+    }
+
+    /** The SMS for one step, always one message (160 characters at most). */
+    public static function stepMessage(EmergencyAlert $alert, string $step): string
+    {
+        $rider = $alert->user;
+        $name  = $rider
+            ? self::truncate(trim("{$rider->first_name} {$rider->last_name}"), self::NAME_MAX)
+            : 'the rider';
+        $agency = $alert->agencyLabel();
+
+        $text = match ($step) {
+            self::STEP_DISPATCHED => "AVISO update: Help is on the way for {$name}"
+                . ($agency ? ' - ' . implode(', ', array_filter([$agency, $alert->etaLabel()])) : '') . '.',
+            self::STEP_ON_SCENE => 'AVISO update: Responders' . ($agency ? " ({$agency})" : '') . " have reached {$name}.",
+            default => $alert->outcome === 'false_alarm'
+                ? "AVISO update: The SOS from {$name} was a false alarm. No help is needed."
+                : "AVISO update: {$name}'s emergency is resolved" . ($alert->outcomeLabel() ? ' - ' . $alert->outcomeLabel() : '') . '.',
+        };
+
+        return self::truncate($text, self::SMS_MAX_LENGTH);
     }
 
     private static function truncate(string $text, int $max): string
@@ -254,19 +318,30 @@ class EmergencyAlertService
             'handled_by'             => $admin->id,
         ]);
 
-        return $this->afterUpdate($alert);
+        $alert = $this->afterUpdate($alert);
+        $this->notifications->notifyAdmins(AdminNotifications::sosDispatched($alert, $admin));
+        $this->notifications->notifyUser($alert->user, RiderNotifications::sosDispatched($alert));
+
+        return $alert;
     }
 
     /** Step 3: the agency confirmed the responders reached the rider. */
-    public function markOnScene(EmergencyAlert $alert): EmergencyAlert
+    public function markOnScene(EmergencyAlert $alert, ?User $admin = null): EmergencyAlert
     {
         $this->ensureStatus($alert, [EmergencyAlert::STATUS_ACKNOWLEDGED], 'Mark help dispatched first.');
 
-        if ($alert->on_scene_at === null) {
-            $alert->update(['on_scene_at' => now()]);
+        if ($alert->on_scene_at !== null) {
+            // Already on scene: nothing new to tell anyone.
+            return $this->afterUpdate($alert);
         }
 
-        return $this->afterUpdate($alert);
+        $alert->update(['on_scene_at' => now()]);
+
+        $alert = $this->afterUpdate($alert);
+        $this->notifications->notifyAdmins(AdminNotifications::sosOnScene($alert, $admin));
+        $this->notifications->notifyUser($alert->user, RiderNotifications::sosOnScene($alert));
+
+        return $alert;
     }
 
     /**
@@ -298,7 +373,11 @@ class EmergencyAlertService
         // tab or a second operator keeps a red pin and a looping alarm.
         $this->broadcastQuietly(new EmergencyAlertResolved($alert));
 
-        return $alert->load('user', 'handler');
+        $alert->load('user', 'handler');
+        $this->notifications->notifyAdmins(AdminNotifications::sosResolved($alert, $admin));
+        $this->notifications->notifyUser($alert->user, RiderNotifications::sosResolved($alert));
+
+        return $alert;
     }
 
     /**

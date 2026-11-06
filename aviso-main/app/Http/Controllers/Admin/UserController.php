@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\User;
 use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,7 +19,7 @@ class UserController extends Controller
     {
     }
 
-    public function index(\Illuminate\Http\Request $request): Response
+    public function index(Request $request): Response
     {
         $filters = $request->only(['search', 'role', 'sort']);
         $filters['role'] = UserService::tab($filters);
@@ -33,14 +34,14 @@ class UserController extends Controller
     /** Adds an admin. Riders create their own account in the app. */
     public function store(StoreUserRequest $request): RedirectResponse
     {
-        $this->userService->createAdmin($request->validated());
+        $this->userService->createAdmin($request->validated(), $request->user());
 
         return redirect()->route('users.index', ['role' => 'admin'])->with('success', 'Admin account created.');
     }
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $this->userService->updateUser($user, $request->validated());
+        $this->userService->updateUser($user, $request->validated(), $request->user());
 
         return back()->with('success', 'User updated successfully.');
     }
@@ -62,13 +63,13 @@ class UserController extends Controller
     }
 
     /** Riders only: admins are deactivated, so their name stays on what they handled. */
-    public function destroy(User $user): RedirectResponse
+    public function destroy(Request $request, User $user): RedirectResponse
     {
         if ($user->role !== 'rider') {
             return back()->with('error', 'Admin accounts cannot be deleted. Deactivate the admin instead.');
         }
 
-        $this->userService->deleteUser($user);
+        $this->userService->deleteUser($user, $request->user());
 
         return back()->with('success', 'Rider deleted successfully.');
     }

@@ -10,11 +10,13 @@ import {
 import { usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { toast } from '@/lib/toast';
+import { smsStepDescription } from '@/lib/sos-sms';
 import { useSosAlarm } from '@/hooks/use-sos-alarm';
 import { type PageProps } from '@/types';
 import {
     type SosAlertPayload,
     type SosAlertResolvedPayload,
+    type SosStepSms,
 } from '@/types/models';
 import {
     type DispatchFormData,
@@ -147,21 +149,24 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
     }, [announceRider]);
 
     const dispatchAlert = useCallback(async (id: string | number, data: DispatchFormData) => {
-        const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+        const { data: res } = await axios.post<{ alert: SosAlertPayload; sms?: SosStepSms | null }>(
             route('sos-alerts.dispatch', Number(id)),
             data,
         );
         setAlerts(prev => replaceAlert(prev, res.alert));
-        toast.success({ title: 'Help dispatched', description: res.alert.agency_label ?? undefined });
+        toast.success({
+            title: res.alert.agency_label ? `Help dispatched: ${res.alert.agency_label}` : 'Help dispatched',
+            description: smsStepDescription(res.sms),
+        });
     }, []);
 
     const markOnScene = useCallback(async (id: string | number) => {
         try {
-            const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+            const { data: res } = await axios.post<{ alert: SosAlertPayload; sms?: SosStepSms | null }>(
                 route('sos-alerts.on-scene', Number(id)),
             );
             setAlerts(prev => replaceAlert(prev, res.alert));
-            toast.success({ title: 'Responders on scene' });
+            toast.success({ title: 'Responders on scene', description: smsStepDescription(res.sms) });
         } catch (error) {
             toast.error({ title: 'Failed to update', description: 'Please try again.' });
             throw error;
@@ -181,8 +186,8 @@ export function SosAlertProvider({ children }: { children: ReactNode }) {
         });
 
         try {
-            await axios.put(route('sos-alerts.resolve', numericId), data);
-            toast.success({ title: 'Emergency resolved' });
+            const { data: res } = await axios.put<{ sms?: SosStepSms | null }>(route('sos-alerts.resolve', numericId), data);
+            toast.success({ title: 'Emergency resolved', description: smsStepDescription(res.sms) });
         } catch (error) {
             if (removed) {
                 const restored = removed;

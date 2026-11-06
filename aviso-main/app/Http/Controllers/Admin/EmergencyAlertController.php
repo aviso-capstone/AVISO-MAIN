@@ -43,29 +43,32 @@ class EmergencyAlertController extends Controller
     {
         $alert = $this->emergencyAlertService->dispatch($alert, $request->validated(), $request->user());
 
-        return response()->json([
-            'success' => true,
-            'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
-        ]);
+        return $this->stepResponse($alert, EmergencyAlertService::STEP_DISPATCHED);
     }
 
-    public function onScene(EmergencyAlert $alert): JsonResponse
+    public function onScene(Request $request, EmergencyAlert $alert): JsonResponse
     {
-        $alert = $this->emergencyAlertService->markOnScene($alert);
+        $alreadyOnScene = $alert->on_scene_at !== null;
+        $alert = $this->emergencyAlertService->markOnScene($alert, $request->user());
 
-        return response()->json([
-            'success' => true,
-            'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
-        ]);
+        // A repeat click changes nothing, so the contacts are not texted twice.
+        return $this->stepResponse($alert, $alreadyOnScene ? null : EmergencyAlertService::STEP_ON_SCENE);
     }
 
     public function resolve(ResolveEmergencyAlertRequest $request, EmergencyAlert $alert): JsonResponse
     {
         $alert = $this->emergencyAlertService->resolve($alert, $request->validated(), $request->user());
 
+        return $this->stepResponse($alert, EmergencyAlertService::STEP_RESOLVED);
+    }
+
+    /** The updated alert, plus how many emergency contacts got the SMS update. */
+    private function stepResponse(EmergencyAlert $alert, ?string $step): JsonResponse
+    {
         return response()->json([
             'success' => true,
             'alert'   => (new EmergencyAlertTriggered($alert))->broadcastWith(),
+            'sms'     => $step ? $this->emergencyAlertService->textContactsAboutStep($alert, $step) : null,
         ]);
     }
 }

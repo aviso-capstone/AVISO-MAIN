@@ -255,3 +255,42 @@ export interface RiderEventTypeStats {
     gyro_dps: MinAvgMax;
     tilt_deg: MinAvgMax;
 }
+
+/** Admin Notifications page categories (filter chips). */
+export type AdminNotificationCategory = 'emergency' | 'hazard_reports' | 'accounts' | 'my_account';
+
+/** One item on the admin Notifications page (NotificationService::toPayload). */
+export interface AppNotification {
+    id: string;
+    category: AdminNotificationCategory;
+    /** What it is about, e.g. "sos:12"; items with the same key stack together. */
+    context_key: string | null;
+    /** What happened, e.g. "sos.dispatched". */
+    event: string | null;
+    title: string;
+    body: string;
+    /** Website path to open, e.g. "/map?alert=12". */
+    link: string | null;
+    read_at: string | null;
+    created_at: string;
+}
+
+/** The live message on App.Models.User.{id} (Echo `.notification()`). */
+export interface AppNotificationBroadcast {
+    id: string;
+    type: string;
+    category: AdminNotificationCategory;
+    context_key: string | null;
+    event: string | null;
+    title: string;
+    body: string;
+    link: string | null;
+    created_at: string;
+}
+
+/** How many emergency contacts got the SMS update for an SOS step. */
+export interface SosStepSms {
+    contacts: number;
+    sent: number;
+    failed: number;
+}

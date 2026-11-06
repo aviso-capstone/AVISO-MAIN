@@ -63,6 +63,7 @@ class HazardReportTest extends TestCase
         $service = new HazardReportService(
             $this->createMock(\App\Services\SecureFileUploader::class),
             $this->createMock(HazardLogService::class),
+            $this->createMock(\App\Services\NotificationService::class),
         );
 
         $this->expectException(ValidationException::class);
@@ -82,6 +83,7 @@ class HazardReportTest extends TestCase
         $service = new HazardReportService(
             $this->createMock(\App\Services\SecureFileUploader::class),
             $this->createMock(HazardLogService::class),
+            $this->createMock(\App\Services\NotificationService::class),
         );
 
         $this->expectException(ValidationException::class);

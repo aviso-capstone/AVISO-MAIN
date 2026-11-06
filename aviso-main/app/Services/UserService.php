@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Notifications\AdminNotifications;
+use App\Notifications\RiderNotifications;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +13,11 @@ use Illuminate\Support\Str;
 
 class UserService
 {
+    public function __construct(private NotificationService $notifications)
+    {
+        //
+    }
+
     /**
      * Get paginated and filtered users for the Admin Panel.
      */
@@ -68,14 +75,17 @@ class UserService
     }
 
     /** A new admin account, with the password the adding admin chose. */
-    public function createAdmin(array $data): User
+    public function createAdmin(array $data, User $actor): User
     {
         $data['password']          = Hash::make($data['password']);
         $data['role']              = 'admin';
         $data['is_active']         = true;
         $data['email_verified_at'] = now();
 
-        return User::create($data);
+        $admin = User::create($data);
+        $this->notifications->notifyAdmins(AdminNotifications::adminAdded($admin, $actor));
+
+        return $admin;
     }
 
     /**
@@ -106,14 +116,24 @@ class UserService
             }
         }
 
+        if ($admin->isDeactivated() === ! $active) {
+            return; // already in that state: nothing to tell anyone
+        }
+
         $admin->update(['is_active' => $active]);
 
         if (! $active) {
             $this->signOutOtherSessions($admin);
         }
+
+        $this->notifications->notifyAdmins(AdminNotifications::adminActiveChanged($admin, $active, $actor));
     }
 
-    public function updateUser(User $user, array $data): bool
+    /**
+     * $actor is the admin editing someone else's account from the Users page
+     * (they get notified); null when people edit their own account.
+     */
+    public function updateUser(User $user, array $data, ?User $actor = null): bool
     {
         $passwordChanged = !empty($data['password']);
 
@@ -127,6 +147,10 @@ class UserService
 
         if ($passwordChanged) {
             $this->signOutOtherSessions($user);
+        }
+
+        if ($actor && ! $actor->is($user)) {
+            $this->notifyAccountEdited($user, $actor, $passwordChanged);
         }
 
         return $updated;
@@ -186,8 +210,27 @@ class UserService
     /**
      * Delete a user.
      */
-    public function deleteUser(User $user): ?bool
+    public function deleteUser(User $user, ?User $actor = null): ?bool
     {
-        return $user->delete();
+        $deleted = $user->delete();
+
+        if ($deleted && $actor && $user->role === 'rider') {
+            $this->notifications->notifyAdmins(AdminNotifications::riderDeleted($user, $actor));
+        }
+
+        return $deleted;
+    }
+
+    private function notifyAccountEdited(User $user, User $actor, bool $passwordChanged): void
+    {
+        if ($user->role === 'rider') {
+            $this->notifications->notifyUser($user, RiderNotifications::detailsUpdated());
+
+            return;
+        }
+
+        $this->notifications->notifyUser($user, $passwordChanged
+            ? AdminNotifications::myPasswordChanged($actor)
+            : AdminNotifications::myDetailsChanged($actor));
     }
 }

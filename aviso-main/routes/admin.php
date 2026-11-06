@@ -54,6 +54,12 @@ Route::middleware('web')->group(function () {
         Route::post('/hazard-reports/{report}/reject', [\App\Http\Controllers\Admin\HazardReportController::class, 'reject'])->name('hazard-reports.reject');
         Route::get('/crash-logs', [\App\Http\Controllers\Admin\CrashDetectionLogsController::class, 'index'])->name('crash-logs.index');
 
+        // Notifications page (only the logged-in admin's own)
+        Route::get('/notifications', [\App\Http\Controllers\Admin\NotificationController::class, 'index'])->name('notifications.index');
+        Route::get('/notifications/unread-count', [\App\Http\Controllers\Admin\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+        Route::post('/notifications/read-all', [\App\Http\Controllers\Admin\NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+        Route::post('/notifications/{id}/read', [\App\Http\Controllers\Admin\NotificationController::class, 'markRead'])->name('notifications.read');
+
         // Settings
         Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
         Route::post('/settings/profile', [\App\Http\Controllers\Admin\SettingsController::class, 'updateProfile'])->name('settings.profile');

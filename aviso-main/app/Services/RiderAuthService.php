@@ -6,11 +6,18 @@ use App\Mail\RiderPasswordResetMail;
 use App\Mail\RiderVerificationMail;
 use App\Models\PasswordResetOtp;
 use App\Models\User;
+use App\Notifications\AdminNotifications;
+use App\Notifications\RiderNotifications;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 
 class RiderAuthService
 {
+    public function __construct(private NotificationService $notifications)
+    {
+        //
+    }
+
     public function attemptLogin(string $identifier, string $password): ?array
     {
         $user = User::where(function ($q) use ($identifier) {
@@ -97,8 +104,14 @@ class RiderAuthService
             return null;
         }
 
+        $isNewRider = $user->email_verified_at === null;
         $user->update(['email_verified_at' => now()]);
         $record->delete();
+
+        // A new rider counts once their email is verified.
+        if ($isNewRider) {
+            $this->notifications->notifyAdmins(AdminNotifications::riderRegistered($user));
+        }
 
         $token = $user->createToken('rider-app')->plainTextToken;
 
@@ -210,6 +223,7 @@ class RiderAuthService
         }
 
         $user->update(['password' => Hash::make($password)]);
+        $this->notifications->notifyUser($user, RiderNotifications::passwordReset());
 
         return true;
     }

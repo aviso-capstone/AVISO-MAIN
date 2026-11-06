@@ -19,7 +19,8 @@ import { useHazardReports } from '@/components/hazard-reports/HazardReportProvid
 import { getHazardTailwindColors } from '@/lib/hazards';
 import { toast } from '@/lib/toast';
 import { useSosAlerts } from '@/components/sos/SosAlertProvider';
-import { type HazardLog, type SosAlertPayload } from '@/types/models';
+import { type HazardLog, type SosAlertPayload, type SosStepSms } from '@/types/models';
+import { smsStepDescription } from '@/lib/sos-sms';
 import { type EmergencyAlert, type LngLat } from './components/map/riderData';
 import { type DispatchFormData, type ResolveFormData } from './components/sos/dispatchOptions';
 
@@ -213,21 +214,22 @@ export default function MapPage({ hazards: loadedHazards, focusAlert }: MapPageP
     // Each handler rejects on failure so the panel's dialog shows the reason.
     const handleDispatchHistorical = async (data: DispatchFormData) => {
         if (!historicalAlert) return;
-        const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+        const { data: res } = await axios.post<{ alert: SosAlertPayload; sms?: SosStepSms | null }>(
             route('sos-alerts.dispatch', historicalAlert.id),
             data,
         );
         setHistoricalAlert(toEmergencyAlert(res.alert));
-        toast.success({ title: 'Help dispatched' });
+        toast.success({ title: 'Help dispatched', description: smsStepDescription(res.sms) });
     };
 
     const handleOnSceneHistorical = async () => {
         if (!historicalAlert) return;
         try {
-            const { data: res } = await axios.post<{ alert: SosAlertPayload }>(
+            const { data: res } = await axios.post<{ alert: SosAlertPayload; sms?: SosStepSms | null }>(
                 route('sos-alerts.on-scene', historicalAlert.id),
             );
             setHistoricalAlert(toEmergencyAlert(res.alert));
+            toast.success({ title: 'Responders on scene', description: smsStepDescription(res.sms) });
         } catch (error) {
             toast.error({ title: 'Failed to update', description: 'Please try again.' });
             throw error;
@@ -236,7 +238,7 @@ export default function MapPage({ hazards: loadedHazards, focusAlert }: MapPageP
 
     const handleResolveHistorical = async (data: ResolveFormData) => {
         if (!historicalAlert) return;
-        const { data: res } = await axios.put<{ alert: SosAlertPayload }>(
+        const { data: res } = await axios.put<{ alert: SosAlertPayload; sms?: SosStepSms | null }>(
             route('sos-alerts.resolve', historicalAlert.id),
             data,
         );
@@ -247,7 +249,7 @@ export default function MapPage({ hazards: loadedHazards, focusAlert }: MapPageP
         // meant a refresh re-opened the record we just resolved.
         window.history.replaceState({}, '', window.location.pathname);
 
-        toast.success({ title: 'Alert marked as resolved' });
+        toast.success({ title: 'Alert marked as resolved', description: smsStepDescription(res.sms) });
     };
 
 

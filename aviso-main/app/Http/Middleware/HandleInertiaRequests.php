@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Services\EmergencyAlertService;
 use App\Services\HazardReportService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -52,6 +53,10 @@ class HandleInertiaRequests extends Middleware
             // the Live Map panel and the sidebar badge. Admin-only, lazy.
             'hazardReports' => fn (): ?array => $request->user()?->role === 'admin'
                 ? ['pending' => app(HazardReportService::class)->pendingForAdmin()]
+                : null,
+            // Unread count for the sidebar's Notifications badge. Admin-only, lazy.
+            'notificationCount' => fn (): ?array => $request->user()?->role === 'admin'
+                ? ['unread' => app(NotificationService::class)->unreadCount($request->user())]
                 : null,
         ];
     }

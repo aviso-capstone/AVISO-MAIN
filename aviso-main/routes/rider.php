@@ -7,6 +7,7 @@ use App\Http\Controllers\Rider\EmergencyController;
 use App\Http\Controllers\Rider\HazardLogController;
 use App\Http\Controllers\Rider\HazardReportController;
 use App\Http\Controllers\Rider\IotDeviceController;
+use App\Http\Controllers\Rider\NotificationController;
 use App\Http\Controllers\Rider\ProfileController;
 use App\Http\Controllers\Rider\RiderAuthController;
 use App\Http\Controllers\Rider\RiderEventController;
@@ -84,6 +85,12 @@ Route::prefix('rider')->group(function () {
         Route::patch('/profile',          [ProfileController::class, 'update']);
         Route::patch('/profile/personal', [ProfileController::class, 'updatePersonalInfo']);
         Route::post('/profile/avatar',    [ProfileController::class, 'uploadAvatar']);
+
+        // ── Notifications screen (the bell on Home) ───────────────────────────
+        Route::get('/notifications',              [NotificationController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])->middleware('throttle:60,1');
+        Route::post('/notifications/read-all',    [NotificationController::class, 'markAllRead'])->middleware('throttle:30,1');
+        Route::post('/notifications/{id}/read',   [NotificationController::class, 'markRead'])->middleware('throttle:60,1');
 
         // ── Text-to-speech proxy (OpenAI key stays server-side, never in mobile bundle) ──
         Route::post('/tts', [TtsController::class, 'speak']);

@@ -121,6 +121,18 @@ class EmergencyAlert extends Model
         return $this->outcome ? (self::OUTCOMES[$this->outcome] ?? $this->outcome) : null;
     }
 
+    /** "about 10 min", "more than 1 hour", or null when the ETA is unknown. */
+    public function etaLabel(): ?string
+    {
+        if ($this->eta_minutes === null) {
+            return null;
+        }
+
+        return $this->eta_minutes >= self::ETA_MORE_THAN_HOUR
+            ? 'more than 1 hour'
+            : "about {$this->eta_minutes} min";
+    }
+
     /** Responder full name, or null when the agency gave none. */
     public function responderName(): ?string
     {
