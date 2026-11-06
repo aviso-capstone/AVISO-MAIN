@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -56,6 +57,17 @@ class AdminLoginRequest extends FormRequest
 
             throw ValidationException::withMessages([
                 'username' => trans('auth.failed'),
+            ]);
+        }
+
+        // Deactivated admin: only reached with the right password, so this
+        // message never tells a stranger which usernames exist.
+        if (Auth::user()->isDeactivated()) {
+            Auth::logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'username' => User::DEACTIVATED_MESSAGE,
             ]);
         }
 

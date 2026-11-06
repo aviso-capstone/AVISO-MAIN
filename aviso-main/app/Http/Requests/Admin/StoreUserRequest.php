@@ -4,7 +4,6 @@ namespace App\Http\Requests\Admin;
 
 use App\Http\Requests\Concerns\NormalizesPersonNames;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StoreUserRequest extends FormRequest
@@ -16,6 +15,10 @@ class StoreUserRequest extends FormRequest
         return true;
     }
 
+    /**
+     * The website only adds admins: riders create their own account in the
+     * app. The role is set by UserService::createAdmin, never by the form.
+     */
     public function rules(): array
     {
         return [
@@ -25,13 +28,6 @@ class StoreUserRequest extends FormRequest
             'username'       => ['required', 'string', 'max:255', 'unique:users'],
             'email'          => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'contact_number' => ['nullable', 'string', 'max:20'],
-            'address'        => ['nullable', 'string', 'max:1000'],
-            'street'         => ['nullable', 'string', 'max:255'],
-            'barangay_id'    => ['nullable', 'string', 'exists:barangays,code'],
-            'city_id'        => ['nullable', 'string', 'exists:cities,city_id'],
-            'province_id'    => ['nullable', 'string', 'exists:provinces,province_id'],
-            'region_id'      => ['nullable', 'string', 'exists:regions,region_id'],
-            'role'           => ['required', Rule::in(['admin', 'rider'])],
             'password'       => ['required', 'string', Password::min(8)->mixedCase(), 'confirmed'],
         ];
     }

@@ -20,6 +20,8 @@ class AdminAuthController extends Controller
         return Inertia::render('Auth/Login', [
             'status'           => session('status'),
             'canResetPassword' => true,
+            // Set by RequireAdminRole when a logged-in admin was deactivated.
+            'deactivated'      => session('deactivated'),
         ]);
     }
 

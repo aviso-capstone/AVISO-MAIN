@@ -10,13 +10,6 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { type User } from "@/types/models";
 import { sanitizeText, sanitizeAlphanumeric } from "@/lib/sanitize";
 import { PasswordChecker } from "@/components/ui/PasswordChecker";
@@ -26,6 +19,8 @@ interface UserFormDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     editingUser: User | null;
+    /** Admins tab: add/edit an admin (no address). Riders tab: edit a rider. */
+    isAdminForm: boolean;
     onSubmit: (e: React.FormEvent) => void;
     processing: boolean;
     errors: Record<string, string>;
@@ -42,7 +37,6 @@ interface UserFormDialogProps {
         city_id: string;
         barangay_id: string;
         region_id: string;
-        role: string;
         password: string;
         password_confirmation: string;
     };
@@ -53,6 +47,7 @@ export function UserFormDialog({
     isOpen,
     onOpenChange,
     editingUser,
+    isAdminForm,
     onSubmit,
     processing,
     errors,
@@ -64,11 +59,13 @@ export function UserFormDialog({
             <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
                 <form onSubmit={onSubmit}>
                     <DialogHeader>
-                        <DialogTitle>{editingUser ? 'Edit User' : 'Create New User'}</DialogTitle>
+                        <DialogTitle>
+                            {editingUser ? (isAdminForm ? 'Edit Admin' : 'Edit Rider') : 'Add Admin'}
+                        </DialogTitle>
                         <DialogDescription>
                             {editingUser
-                                ? 'Update the user details below.'
-                                : 'Add a new administrator or rider account to the system.'}
+                                ? 'Update the account details below.'
+                                : 'Set the password for the new admin. They can change it later in Settings.'}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -112,35 +109,17 @@ export function UserFormDialog({
                             {errors.middle_name && <p className="text-xs text-destructive">{errors.middle_name}</p>}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="username">Username</Label>
-                                <Input
-                                    id="username"
-                                    value={formData.username}
-                                    onChange={e => setFormData('username', sanitizeAlphanumeric(e.target.value))}
-                                    disabled={editingUser?.role === 'rider'}
-                                    required
-                                />
-                                {errors.username && <p className="text-xs text-destructive">{errors.username}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="role">Role</Label>
-                                <Select 
-                                    value={formData.role} 
-                                    onValueChange={v => setFormData('role', v)}
-                                    disabled={editingUser?.role === 'rider'}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="admin">Administrator</SelectItem>
-                                        <SelectItem value="rider">Rider</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.role && <p className="text-xs text-destructive">{errors.role}</p>}
-                            </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="username">Username</Label>
+                            <Input
+                                id="username"
+                                value={formData.username}
+                                onChange={e => setFormData('username', sanitizeAlphanumeric(e.target.value))}
+                                disabled={editingUser?.role === 'rider'}
+                                autoComplete="off"
+                                required
+                            />
+                            {errors.username && <p className="text-xs text-destructive">{errors.username}</p>}
                         </div>
 
                         <div className="space-y-2">
@@ -169,17 +148,19 @@ export function UserFormDialog({
                             {errors.contact_number && <p className="text-xs text-destructive">{errors.contact_number}</p>}
                         </div>
 
-                        <AddressFields
-                            value={{
-                                street:      formData.street,
-                                province_id: formData.province_id,
-                                city_id:     formData.city_id,
-                                barangay_id: formData.barangay_id,
-                                region_id:   formData.region_id,
-                            }}
-                            onChange={(field, val) => setFormData(field, val)}
-                            errors={errors}
-                        />
+                        {!isAdminForm && (
+                            <AddressFields
+                                value={{
+                                    street:      formData.street,
+                                    province_id: formData.province_id,
+                                    city_id:     formData.city_id,
+                                    barangay_id: formData.barangay_id,
+                                    region_id:   formData.region_id,
+                                }}
+                                onChange={(field, val) => setFormData(field, val)}
+                                errors={errors}
+                            />
+                        )}
 
                         {(!editingUser || editingUser.role !== 'rider') && (
                             <>
@@ -190,6 +171,7 @@ export function UserFormDialog({
                                     <Input
                                         id="password"
                                         type="password"
+                                        autoComplete="new-password"
                                         value={formData.password}
                                         onChange={e => setFormData('password', e.target.value)}
                                         required={!editingUser}
@@ -237,7 +219,7 @@ export function UserFormDialog({
                             Cancel
                         </Button>
                         <Button type="submit" disabled={processing}>
-                            {editingUser ? 'Save Changes' : 'Create User'}
+                            {editingUser ? 'Save Changes' : 'Add Admin'}
                         </Button>
                     </DialogFooter>
                 </form>

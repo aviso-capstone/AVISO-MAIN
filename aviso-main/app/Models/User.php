@@ -34,6 +34,7 @@ class User extends Authenticatable
         'avatar_path',
         'password',
         'role',
+        'is_active',
         'email_verified_at',
         'street',
         'barangay_id',
@@ -62,7 +63,24 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    /** Shown on the login page when a deactivated admin tries to get in. */
+    public const DEACTIVATED_MESSAGE = 'This account has been deactivated. Please contact an AVISO administrator.';
+
+    /** Shown when an admin who is already logged in gets deactivated. */
+    public const DEACTIVATED_SESSION_MESSAGE = 'Your account has been deactivated. Please contact an AVISO administrator.';
+
+    /**
+     * Only an explicit false counts: right after a deploy the `is_active`
+     * column may not exist yet (the web server starts before migrations run),
+     * and that must not lock every admin out.
+     */
+    public function isDeactivated(): bool
+    {
+        return $this->is_active === false;
     }
 
     public function getAvatarUrlAttribute(): ?string

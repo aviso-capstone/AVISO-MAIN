@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from "@inertiajs/react";
 import { FormEventHandler, useState } from "react";
 import { toast } from "@/lib/toast";
-import { Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +19,12 @@ import AuthLayout from "@/layouts/AuthLayout";
 export default function Login({
     status,
     canResetPassword,
+    deactivated,
 }: {
     status?: string;
     canResetPassword?: boolean;
+    /** Set when a logged-in admin was deactivated and sent back here. */
+    deactivated?: string | null;
 }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         username: "",
@@ -71,6 +74,13 @@ export default function Login({
                         <Alert className="mb-4 border-primary/30 bg-primary/10 text-primary [&>svg]:text-primary">
                             <CheckCircle2 className="h-4 w-4" />
                             <AlertDescription>{status}</AlertDescription>
+                        </Alert>
+                    )}
+
+                    {deactivated && (
+                        <Alert variant="destructive" className="mb-4" role="alert">
+                            <ShieldAlert className="h-4 w-4" />
+                            <AlertDescription>{deactivated}</AlertDescription>
                         </Alert>
                     )}
 

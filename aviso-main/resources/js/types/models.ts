@@ -13,6 +13,8 @@ export interface User {
     province_id: string | null;
     region_id: string | null;
     role: 'admin' | 'rider' | string;
+    /** False = deactivated admin (can't log in). Missing before the migration runs. */
+    is_active?: boolean;
     created_at: string;
     updated_at?: string;
 }

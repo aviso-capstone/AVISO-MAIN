@@ -28,9 +28,8 @@ class UserService
             });
         }
 
-        if (!empty($filters['role']) && $filters['role'] !== 'all') {
-            $query->where('role', $filters['role']);
-        }
+        // The page has two tabs, Riders and Admins; never both in one list.
+        $query->where('role', self::tab($filters));
 
         $sort = $filters['sort'] ?? '-created_at';
         $direction = str_starts_with($sort, '-') ? 'desc' : 'asc';
@@ -46,40 +45,72 @@ class UserService
         return $query->paginate(15)->withQueryString();
     }
 
-    /**
-     * Get summary stats for the Users page.
-     */
-    public function getUserStats(array $filters = []): array
+    /** The Users page tab: "rider" (default) or "admin". */
+    public static function tab(array $filters): string
     {
-        $baseQuery = User::query();
+        return ($filters['role'] ?? null) === 'admin' ? 'admin' : 'rider';
+    }
 
-        if (!empty($filters['search'])) {
-            $search = $filters['search'];
-            $baseQuery->where(function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%")
-                  ->orWhere('username', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
-
-        if (!empty($filters['role']) && $filters['role'] !== 'all') {
-            $baseQuery->where('role', $filters['role']);
-        }
+    /**
+     * Count cards for the Users page (whole system, not the search).
+     *
+     * @return array{riders: int, admins: int, active_admins: int}
+     */
+    public function getUserStats(): array
+    {
+        $admins = User::where('role', 'admin');
 
         return [
-            'total'  => (clone $baseQuery)->count(),
-            'admins' => (clone $baseQuery)->where('role', 'admin')->count(),
-            'riders' => (clone $baseQuery)->where('role', 'rider')->count(),
+            'riders'        => User::where('role', 'rider')->count(),
+            'admins'        => (clone $admins)->count(),
+            'active_admins' => (clone $admins)->where('is_active', true)->count(),
         ];
     }
 
-    public function createUser(array $data): User
+    /** A new admin account, with the password the adding admin chose. */
+    public function createAdmin(array $data): User
     {
         $data['password']          = Hash::make($data['password']);
+        $data['role']              = 'admin';
+        $data['is_active']         = true;
         $data['email_verified_at'] = now();
-        $data = $this->computeAddress($data);
+
         return User::create($data);
+    }
+
+    /**
+     * Deactivate or reactivate an admin. A deactivated admin is signed out
+     * everywhere and can't log in; their name stays on the SOS alerts,
+     * hazards and reports they handled.
+     *
+     * @throws \DomainException with a message for the admin
+     */
+    public function setActive(User $admin, bool $active, User $actor): void
+    {
+        if ($admin->role !== 'admin') {
+            throw new \DomainException('Only admin accounts can be deactivated.');
+        }
+
+        if (! $active) {
+            if ($admin->is($actor)) {
+                throw new \DomainException('You cannot deactivate your own account.');
+            }
+
+            $otherActiveAdmins = User::where('role', 'admin')
+                ->where('is_active', true)
+                ->whereKeyNot($admin->id)
+                ->count();
+
+            if ($otherActiveAdmins === 0) {
+                throw new \DomainException('You cannot deactivate the last active admin.');
+            }
+        }
+
+        $admin->update(['is_active' => $active]);
+
+        if (! $active) {
+            $this->signOutOtherSessions($admin);
+        }
     }
 
     public function updateUser(User $user, array $data): bool

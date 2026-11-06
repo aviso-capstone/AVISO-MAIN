@@ -33,15 +33,11 @@ class UpdateUserRequest extends FormRequest
             'region_id'      => ['nullable', 'string', 'exists:regions,region_id'],
         ];
 
+        // The role is never editable: an admin stays an admin and a rider stays
+        // a rider (a rider account is only ever made by signing up in the app).
         if ($user->role !== 'rider') {
             $rules['username'] = ['required', 'string', 'max:255', Rule::unique('users')->ignore($user->id)];
             $rules['email']    = ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)];
-            // An admin can't change their own role — demoting the last admin
-            // would lock everyone out of the console (same idea as the
-            // self-delete guard in UserController::destroy).
-            $rules['role'] = $user->is($this->user())
-                ? ['required', Rule::in([$user->role])]
-                : ['required', Rule::in(['admin', 'rider'])];
 
             if ($this->filled('password')) {
                 $rules['password'] = ['required', 'string', Password::min(8)->mixedCase(), 'confirmed'];
@@ -49,14 +45,5 @@ class UpdateUserRequest extends FormRequest
         }
 
         return $rules;
-    }
-
-    public function messages(): array
-    {
-        return [
-            'role.in' => $this->route('user')?->is($this->user())
-                ? 'You cannot change your own role.'
-                : 'The selected role is invalid.',
-        ];
     }
 }

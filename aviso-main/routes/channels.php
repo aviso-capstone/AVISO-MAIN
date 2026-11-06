@@ -14,5 +14,5 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 // session before Reverb will let it subscribe. Returning true here would let
 // anyone who can reach the WebSocket port read every alert.
 Broadcast::channel('riders.live', function (User $user): bool {
-    return $user->role === 'admin';
+    return $user->role === 'admin' && ! $user->isDeactivated();
 });

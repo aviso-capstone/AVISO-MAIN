@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm, router } from '@inertiajs/react';
+import { useForm, router, usePage } from '@inertiajs/react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,13 +13,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
     Search,
     UserCircle,
     Shield,
@@ -28,7 +21,9 @@ import {
     ChevronLeft,
     ChevronRight,
     UserPlus,
-    Eye
+    Eye,
+    UserX,
+    UserCheck,
 } from 'lucide-react';
 import { UserFormDialog } from './UserFormDialog';
 import {
@@ -42,20 +37,29 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { type User, type PaginatedData } from '@/types/models';
+import { type PageProps } from '@/types';
 import { toast } from '@/lib/toast';
 import { UserViewModal } from './UserViewModal';
 import { sanitizeText, sanitizeAlphanumeric } from '@/lib/sanitize';
 
+/** The Users page tab. */
+export type UsersTab = 'rider' | 'admin';
+
 interface UserManagerProps {
     users: PaginatedData<User>;
-    filters: {
-        search?: string;
-        role?: string;
-    };
+    search?: string;
+    tab: UsersTab;
 }
 
-export function UserManager({ users, filters }: UserManagerProps) {
-    const [searchQuery, setSearchQuery] = useState(filters.search || '');
+/** True only for an explicit false (missing before the migration runs = active). */
+const isDeactivated = (user: User) => user.is_active === false;
+
+export function UserManager({ users, search, tab }: UserManagerProps) {
+    const isAdminTab = tab === 'admin';
+    const currentUserId = usePage<PageProps>().props.auth.user.id;
+    const [searchQuery, setSearchQuery] = useState(search || '');
+    const [userToToggle, setUserToToggle] = useState<User | null>(null);
+    const [toggling, setToggling] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -76,7 +80,6 @@ export function UserManager({ users, filters }: UserManagerProps) {
         city_id: '',
         barangay_id: '',
         region_id: '',
-        role: 'rider',
         password: '',
         password_confirmation: '',
     });
@@ -91,16 +94,9 @@ export function UserManager({ users, filters }: UserManagerProps) {
         street:          sanitizeText(data.street),
     }));
 
-    const handleFilterChange = (key: 'role', value: string) => {
-        router.get(route('users.index'), { search: searchQuery, [key]: value }, {
-            preserveState: true,
-            preserveScroll: true,
-        });
-    };
-
     const submitSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        router.get(route('users.index'), { search: searchQuery, role: filters.role || 'all' }, {
+        router.get(route('users.index'), { search: searchQuery, role: tab }, {
             preserveState: true,
             preserveScroll: true,
         });
@@ -134,7 +130,6 @@ export function UserManager({ users, filters }: UserManagerProps) {
             city_id:              user.city_id || '',
             barangay_id:          user.barangay_id || '',
             region_id:            user.region_id || '',
-            role:                 user.role,
             password:             '',
             password_confirmation: '',
         });
@@ -146,10 +141,8 @@ export function UserManager({ users, filters }: UserManagerProps) {
 
         if (editingUser) {
             put(route('users.update', editingUser.id), {
-                onSuccess: () => {
-                    setIsModalOpen(false);
-                    toast.success('User updated successfully');
-                },
+                // The success message comes from the server (flash toast).
+                onSuccess: () => setIsModalOpen(false),
                 onError: (err) => {
                     toast.error({
                         title: 'Failed to update user',
@@ -159,13 +152,10 @@ export function UserManager({ users, filters }: UserManagerProps) {
             });
         } else {
             post(route('users.store'), {
-                onSuccess: () => {
-                    setIsModalOpen(false);
-                    toast.success('User created successfully');
-                },
+                onSuccess: () => setIsModalOpen(false),
                 onError: (err) => {
                     toast.error({
-                        title: 'Failed to create user',
+                        title: 'Failed to add admin',
                         description: Object.values(err)[0] as string || 'Please check the form for errors.'
                     });
                 }
@@ -181,14 +171,28 @@ export function UserManager({ users, filters }: UserManagerProps) {
     const executeDelete = () => {
         if (!userToDelete) return;
         destroy(route('users.destroy', userToDelete.id), {
-            onSuccess: () => {
-                setIsDeleteModalOpen(false);
-                toast.success('User deleted successfully');
-            },
+            onSuccess: () => setIsDeleteModalOpen(false),
             onError: () => {
-                toast.error('Failed to delete user');
+                toast.error('Failed to delete rider');
             }
         });
+    };
+
+    /** Deactivate an active admin, or reactivate a deactivated one. */
+    const executeToggle = () => {
+        if (!userToToggle) return;
+        router.patch(
+            route('users.active', userToToggle.id),
+            { is_active: isDeactivated(userToToggle) },
+            {
+                preserveScroll: true,
+                onStart: () => setToggling(true),
+                onFinish: () => {
+                    setToggling(false);
+                    setUserToToggle(null);
+                },
+            },
+        );
     };
 
     return (
@@ -208,18 +212,14 @@ export function UserManager({ users, filters }: UserManagerProps) {
                         />
                     </form>
 
-                    <div className="flex w-full sm:w-auto gap-3 flex-1 sm:justify-end">
-                        <Select value={filters.role || 'all'} onValueChange={(v) => handleFilterChange('role', v)}>
-                            <SelectTrigger className="w-[140px] bg-background">
-                                <SelectValue placeholder="All Roles" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Roles</SelectItem>
-                                <SelectItem value="admin">Admins</SelectItem>
-                                <SelectItem value="rider">Riders</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {isAdminTab && (
+                        <div className="flex w-full sm:w-auto gap-3 flex-1 sm:justify-end">
+                            <Button onClick={openCreateModal} className="gap-2">
+                                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                                Add Admin
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Table */}
@@ -231,8 +231,9 @@ export function UserManager({ users, filters }: UserManagerProps) {
                                 <TableHead className="font-semibold">Username</TableHead>
                                 <TableHead className="font-semibold">Email</TableHead>
                                 <TableHead className="font-semibold">Contact</TableHead>
-                                <TableHead className="font-semibold">Address</TableHead>
-                                <TableHead className="font-semibold">Role</TableHead>
+                                {isAdminTab
+                                    ? <TableHead className="font-semibold">Status</TableHead>
+                                    : <TableHead className="font-semibold">Address</TableHead>}
                                 <TableHead className="font-semibold">Created At</TableHead>
                                 <TableHead className="font-semibold text-right">Actions</TableHead>
                             </TableRow>
@@ -240,8 +241,8 @@ export function UserManager({ users, filters }: UserManagerProps) {
                         <TableBody>
                             {users.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                                        No users found.
+                                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                        {isAdminTab ? 'No admins found.' : 'No riders found.'}
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -253,29 +254,52 @@ export function UserManager({ users, filters }: UserManagerProps) {
                                         <TableCell className="text-muted-foreground">@{user.username}</TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell className="text-muted-foreground">{user.contact_number || '—'}</TableCell>
-                                        <TableCell className="text-muted-foreground max-w-[180px] truncate" title={user.address || undefined}>
-                                            {user.address || '—'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={user.role === 'admin' ? 'default' : 'secondary'} className={user.role === 'admin' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300'}>
-                                                {user.role === 'admin' ? <Shield className="w-3 h-3 mr-1" /> : <UserCircle className="w-3 h-3 mr-1" />}
-                                                {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                                            </Badge>
-                                        </TableCell>
+                                        {isAdminTab ? (
+                                            <TableCell>
+                                                {isDeactivated(user) ? (
+                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground">Deactivated</Badge>
+                                                ) : (
+                                                    <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                                        <Shield className="w-3 h-3 mr-1" aria-hidden="true" />
+                                                        Active
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                        ) : (
+                                            <TableCell className="text-muted-foreground max-w-[180px] truncate" title={user.address || undefined}>
+                                                {user.address || '—'}
+                                            </TableCell>
+                                        )}
                                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                             {new Date(user.created_at).toLocaleDateString()}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-2">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => openViewModal(user)} aria-label={`View ${user.first_name} ${user.last_name}`}>
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
+                                                {!isAdminTab && (
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => openViewModal(user)} aria-label={`View ${user.first_name} ${user.last_name}`}>
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEditModal(user)} aria-label={`Edit ${user.first_name} ${user.last_name}`}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => confirmDelete(user)} aria-label={`Delete ${user.first_name} ${user.last_name}`}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {isAdminTab ? (
+                                                    user.id !== currentUserId && (
+                                                        isDeactivated(user) ? (
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-600/10" onClick={() => setUserToToggle(user)} aria-label={`Reactivate ${user.first_name} ${user.last_name}`} title="Reactivate">
+                                                                <UserCheck className="h-4 w-4" />
+                                                            </Button>
+                                                        ) : (
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setUserToToggle(user)} aria-label={`Deactivate ${user.first_name} ${user.last_name}`} title="Deactivate">
+                                                                <UserX className="h-4 w-4" />
+                                                            </Button>
+                                                        )
+                                                    )
+                                                ) : (
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => confirmDelete(user)} aria-label={`Delete ${user.first_name} ${user.last_name}`}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -339,6 +363,7 @@ export function UserManager({ users, filters }: UserManagerProps) {
                 isOpen={isModalOpen}
                 onOpenChange={setIsModalOpen}
                 editingUser={editingUser}
+                isAdminForm={isAdminTab}
                 onSubmit={submitUser}
                 processing={processing}
                 errors={errors}
@@ -350,9 +375,9 @@ export function UserManager({ users, filters }: UserManagerProps) {
             <AlertDialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
                 <AlertDialogContent className="sm:max-w-[400px]">
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="text-destructive">Delete User</AlertDialogTitle>
+                        <AlertDialogTitle className="text-destructive">Delete Rider</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete the account for{' '}
+                            Are you sure you want to delete the rider account for{' '}
                             <strong>{userToDelete?.first_name} {userToDelete?.last_name}</strong>?
                             This action cannot be undone.
                         </AlertDialogDescription>
@@ -364,7 +389,41 @@ export function UserManager({ users, filters }: UserManagerProps) {
                             disabled={processing}
                             className="bg-destructive text-white hover:bg-destructive/90"
                         >
-                            Delete User
+                            Delete Rider
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Deactivate / Reactivate Admin Confirmation */}
+            <AlertDialog open={userToToggle !== null} onOpenChange={(open) => { if (!open && !toggling) setUserToToggle(null); }}>
+                <AlertDialogContent className="sm:max-w-[420px]">
+                    {userToToggle && (isDeactivated(userToToggle) ? (
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Reactivate Admin</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Reactivate <strong>{userToToggle.first_name} {userToToggle.last_name}</strong>?
+                                They will be able to log in to the admin website again with their current password.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                    ) : (
+                        <AlertDialogHeader>
+                            <AlertDialogTitle className="text-destructive">Deactivate Admin</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Deactivate <strong>{userToToggle.first_name} {userToToggle.last_name}</strong>?
+                                They will be logged out and can't log in until reactivated. Their name stays on
+                                the SOS alerts, hazards and reports they handled.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                    ))}
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={toggling}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => { e.preventDefault(); executeToggle(); }}
+                            disabled={toggling}
+                            className={userToToggle && isDeactivated(userToToggle) ? '' : 'bg-destructive text-white hover:bg-destructive/90'}
+                        >
+                            {userToToggle && isDeactivated(userToToggle) ? 'Reactivate' : 'Deactivate'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

@@ -1,43 +1,58 @@
 import { type ReactNode } from 'react';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
+import { Shield, UserCircle } from 'lucide-react';
 import AdminLayout from '@/layouts/AdminLayout';
-import { UserStats } from './components/users/UserStats';
-import { UserManager } from './components/users/UserManager';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UserStats, type UserStatsData } from './components/users/UserStats';
+import { UserManager, type UsersTab } from './components/users/UserManager';
 import { type User, type PaginatedData } from '@/types/models';
 
-interface PageProps {
+interface UsersPageProps {
     users: PaginatedData<User>;
-    stats: {
-        total: number;
-        admins: number;
-        riders: number;
-    };
+    stats: UserStatsData;
     filters: {
         search?: string;
-        role?: string;
+        role: UsersTab;
     };
 }
 
-export default function Users({ users, stats, filters }: PageProps) {
+export default function Users({ users, stats, filters }: UsersPageProps) {
+    const tab: UsersTab = filters.role === 'admin' ? 'admin' : 'rider';
+
+    const changeTab = (next: string) => {
+        if (next === tab) return;
+        // A new tab starts with an empty search.
+        router.get(route('users.index'), { role: next }, { preserveScroll: true });
+    };
+
     return (
         <>
-            <Head title="Riders" />
+            <Head title="Users" />
 
-            {/* Header */}
             <div className="mb-6">
-                <h1 className="text-3xl font-heading font-bold tracking-tight">Riders</h1>
+                <h1 className="text-3xl font-heading font-bold tracking-tight">Users</h1>
                 <p className="text-muted-foreground mt-1">
-                    Manage administrators and edge-device riders.
+                    Riders sign up in the AVISO app. Admins are added here by another admin.
                 </p>
             </div>
 
-            <UserStats stats={stats} />
+            <Tabs value={tab} onValueChange={changeTab} className="mb-6">
+                <TabsList>
+                    <TabsTrigger value="rider" className="gap-1.5">
+                        <UserCircle className="h-4 w-4" aria-hidden="true" />
+                        Riders
+                    </TabsTrigger>
+                    <TabsTrigger value="admin" className="gap-1.5">
+                        <Shield className="h-4 w-4" aria-hidden="true" />
+                        Admins
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
 
-            <UserManager 
-                users={users} 
-                filters={filters} 
-            />
-            
+            <UserStats stats={stats} tab={tab} />
+
+            {/* Keyed by tab so the search box and dialogs reset when switching. */}
+            <UserManager key={tab} users={users} search={filters.search} tab={tab} />
         </>
     );
 }

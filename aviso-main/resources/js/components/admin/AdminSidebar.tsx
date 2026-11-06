@@ -71,7 +71,7 @@ const navGroups = [
         title: "MANAGEMENT",
         items: [
             {
-                title: "Riders",
+                title: "Users",
                 url: "/users",
                 icon: Users,
             },
@@ -109,9 +109,13 @@ export default function AdminSidebar() {
         router.post(route("logout"));
     };
 
-    const initial = user?.first_name ? user.first_name.charAt(0).toUpperCase() : "A";
+    const initial = user?.first_name
+        ? user.first_name.charAt(0).toUpperCase()
+        : "A";
     const fullName = user ? `${user.first_name} ${user.last_name}` : "Admin";
-    const roleLabel = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "Admin";
+    const roleLabel = user?.role
+        ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+        : "Admin";
 
     return (
         <Sidebar collapsible="icon">
@@ -135,11 +139,21 @@ export default function AdminSidebar() {
                     <button
                         type="button"
                         onClick={toggleSidebar}
-                        title={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
-                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        title={
+                            collapsed
+                                ? "Expand sidebar (Ctrl+B)"
+                                : "Collapse sidebar (Ctrl+B)"
+                        }
+                        aria-label={
+                            collapsed ? "Expand sidebar" : "Collapse sidebar"
+                        }
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                     >
-                        {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                        {collapsed ? (
+                            <ChevronsRight className="h-4 w-4" />
+                        ) : (
+                            <ChevronsLeft className="h-4 w-4" />
+                        )}
                     </button>
                 </div>
             </SidebarHeader>
@@ -152,12 +166,16 @@ export default function AdminSidebar() {
                                 asChild
                                 tooltip="Dashboard"
                                 className={`text-base py-4 rounded-md mb-2 transition-colors duration-200 group-data-[collapsible=icon]:p-1.5! ${
-                                    url === "/dashboard" || url.startsWith("/dashboard?")
+                                    url === "/dashboard" ||
+                                    url.startsWith("/dashboard?")
                                         ? "bg-black text-white dark:bg-white dark:text-black font-semibold shadow-sm"
                                         : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                                 }`}
                             >
-                                <Link href="/dashboard" className="flex items-center gap-3">
+                                <Link
+                                    href="/dashboard"
+                                    className="flex items-center gap-3"
+                                >
                                     <LayoutDashboard className="w-5 h-5" />
                                     <span>Dashboard</span>
                                 </Link>
@@ -168,17 +186,27 @@ export default function AdminSidebar() {
 
                 {/* Grouped Navigation */}
                 {navGroups.map((group) => (
-                    <SidebarGroup key={group.title} className="pt-2 px-3 group-data-[collapsible=icon]:px-2">
+                    <SidebarGroup
+                        key={group.title}
+                        className="pt-2 px-3 group-data-[collapsible=icon]:px-2"
+                    >
                         <SidebarGroupLabel className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-1">
                             {group.title}
                         </SidebarGroupLabel>
                         <SidebarGroupContent>
                             <SidebarMenu>
                                 {group.items.map((item) => {
-                                    const isActive = item.url !== "#" && url.startsWith(item.url);
-                                    const showSosCount = sosCount > 0 && SOS_BADGED_URLS.includes(item.url);
+                                    const isActive =
+                                        item.url !== "#" &&
+                                        url.startsWith(item.url);
+                                    const showSosCount =
+                                        sosCount > 0 &&
+                                        SOS_BADGED_URLS.includes(item.url);
                                     // An SOS always wins the badge; otherwise the Live Map shows waiting hazard reports.
-                                    const showReportCount = !showSosCount && hazardReportCount > 0 && item.url === "/map";
+                                    const showReportCount =
+                                        !showSosCount &&
+                                        hazardReportCount > 0 &&
+                                        item.url === "/map";
                                     return (
                                         <SidebarMenuItem key={item.title}>
                                             <SidebarMenuButton
@@ -190,7 +218,10 @@ export default function AdminSidebar() {
                                                         : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                                                 }`}
                                             >
-                                                <Link href={item.url} className="flex items-center gap-3">
+                                                <Link
+                                                    href={item.url}
+                                                    className="flex items-center gap-3"
+                                                >
                                                     <item.icon className="w-5 h-5" />
                                                     <span>{item.title}</span>
                                                 </Link>
@@ -228,16 +259,23 @@ export default function AdminSidebar() {
                     </SidebarGroup>
                 ))}
             </SidebarContent>
-            
+
             <SidebarFooter className="p-4 border-t border-border/50 group-data-[collapsible=icon]:p-2">
                 {/* Admin Profile Section */}
-                <div className="flex items-center gap-3 mb-4 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" title={collapsed ? fullName : undefined}>
+                <div
+                    className="flex items-center gap-3 mb-4 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+                    title={collapsed ? fullName : undefined}
+                >
                     <div className="w-10 h-10 shrink-0 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:text-sm">
                         {initial}
                     </div>
                     <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                        <span className="font-semibold text-sm leading-tight text-foreground truncate max-w-[140px]">{fullName}</span>
-                        <span className="text-xs text-muted-foreground">{roleLabel}</span>
+                        <span className="font-semibold text-sm leading-tight text-foreground truncate max-w-[140px]">
+                            {fullName}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            {roleLabel}
+                        </span>
                     </div>
                 </div>
 
@@ -248,21 +286,32 @@ export default function AdminSidebar() {
                             tooltip="Log Out"
                             className="bg-destructive text-white hover:bg-destructive/90 hover:text-white font-semibold text-base py-5 rounded-md cursor-pointer justify-center group-data-[collapsible=icon]:p-1.5! group-data-[collapsible=icon]:justify-center transition-colors"
                         >
-                            <a onClick={() => setIsLogoutModalOpen(true)} className="flex items-center w-full justify-center">
+                            <a
+                                onClick={() => setIsLogoutModalOpen(true)}
+                                className="flex items-center w-full justify-center"
+                            >
                                 <LogOut className="w-5 h-5 group-data-[collapsible=icon]:mr-0 mr-2" />
-                                <span className="group-data-[collapsible=icon]:hidden">Log Out</span>
+                                <span className="group-data-[collapsible=icon]:hidden">
+                                    Log Out
+                                </span>
                             </a>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>
 
-            <AlertDialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+            <AlertDialog
+                open={isLogoutModalOpen}
+                onOpenChange={setIsLogoutModalOpen}
+            >
                 <AlertDialogContent className="sm:max-w-[400px]">
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="text-destructive">Log Out</AlertDialogTitle>
+                        <AlertDialogTitle className="text-destructive">
+                            Log Out
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to end your session and log out of the admin portal?
+                            Are you sure you want to end your session and log
+                            out of the admin portal?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
