@@ -22,14 +22,14 @@ use App\Http\Middleware\RequireRiderRole;
 Route::prefix('rider')->group(function () {
 
     // ── Auth (public) ──────────────────────────────────────────────────────────
-    Route::post('/auth/login',       [RiderAuthController::class, 'login'])->middleware('throttle:6,1');
-    Route::post('/auth/register',    [RiderAuthController::class, 'register'])->middleware('throttle:3,1');
-    Route::post('/auth/verify-otp',  [RiderAuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
-    Route::post('/auth/resend-otp',  [RiderAuthController::class, 'resendOtp'])->middleware('throttle:3,1');
+    Route::post('/auth/login',       [RiderAuthController::class, 'login'])->middleware('throttle:rider-login');
+    Route::post('/auth/register',    [RiderAuthController::class, 'register'])->middleware('throttle:rider-send-code');
+    Route::post('/auth/verify-otp',  [RiderAuthController::class, 'verifyOtp'])->middleware('throttle:rider-check-code');
+    Route::post('/auth/resend-otp',  [RiderAuthController::class, 'resendOtp'])->middleware('throttle:rider-send-code');
 
-    Route::post('/auth/forgot-password',        [RiderAuthController::class, 'sendForgotPasswordOtp'])->middleware('throttle:3,1');
-    Route::post('/auth/forgot-password/verify', [RiderAuthController::class, 'verifyForgotPasswordOtp'])->middleware('throttle:10,1');
-    Route::post('/auth/forgot-password/reset',  [RiderAuthController::class, 'resetForgotPassword'])->middleware('throttle:10,1');
+    Route::post('/auth/forgot-password',        [RiderAuthController::class, 'sendForgotPasswordOtp'])->middleware('throttle:rider-send-code');
+    Route::post('/auth/forgot-password/verify', [RiderAuthController::class, 'verifyForgotPasswordOtp'])->middleware('throttle:rider-check-code');
+    Route::post('/auth/forgot-password/reset',  [RiderAuthController::class, 'resetForgotPassword'])->middleware('throttle:rider-reset-password');
 
     // ── Address lookup (public — PSGC data needs no auth, used by signup too) ─
     Route::get('/address/provinces',         [AddressController::class, 'provinces']);

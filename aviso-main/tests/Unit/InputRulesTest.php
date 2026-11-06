@@ -19,6 +19,7 @@ use App\Http\Requests\Rider\StoreEmergencyContactRequest;
 use App\Http\Requests\Rider\StoreHazardLogRequest;
 use App\Http\Requests\Rider\StoreRiderEventRequest;
 use App\Http\Requests\Rider\VerifyOtpRequest;
+use App\Mail\RiderPasswordResetMail;
 use App\Models\PasswordResetOtp;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -26,6 +27,8 @@ use App\Services\RiderAuthService;
 use App\Support\InputRules;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -340,13 +343,13 @@ class InputRulesTest extends TestCase
     public function test_rider_auth_routes_are_rate_limited(): void
     {
         $expected = [
-            'api/rider/auth/login'                  => 'throttle:6,1',
-            'api/rider/auth/register'               => 'throttle:3,1',
-            'api/rider/auth/verify-otp'             => 'throttle:10,1',
-            'api/rider/auth/resend-otp'             => 'throttle:3,1',
-            'api/rider/auth/forgot-password'        => 'throttle:3,1',
-            'api/rider/auth/forgot-password/verify' => 'throttle:10,1',
-            'api/rider/auth/forgot-password/reset'  => 'throttle:10,1',
+            'api/rider/auth/login'                  => 'throttle:rider-login',
+            'api/rider/auth/register'               => 'throttle:rider-send-code',
+            'api/rider/auth/verify-otp'             => 'throttle:rider-check-code',
+            'api/rider/auth/resend-otp'             => 'throttle:rider-send-code',
+            'api/rider/auth/forgot-password'        => 'throttle:rider-send-code',
+            'api/rider/auth/forgot-password/verify' => 'throttle:rider-check-code',
+            'api/rider/auth/forgot-password/reset'  => 'throttle:rider-reset-password',
             'api/rider/tts'                         => 'throttle:20,1',
         ];
 
@@ -357,7 +360,36 @@ class InputRulesTest extends TestCase
         }
     }
 
-    public function test_a_rider_code_is_thrown_away_after_5_wrong_guesses(): void
+    public function test_one_rider_hitting_the_login_limit_does_not_block_others_on_the_same_wifi(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('email')->nullable();
+            $table->string('username')->nullable();
+            $table->string('role')->default('rider');
+            $table->timestamp('email_verified_at')->nullable();
+            $table->timestamps();
+        });
+
+        $wifi = ['REMOTE_ADDR' => '10.0.0.5'];
+
+        for ($i = 1; $i <= 6; $i++) {
+            $this->withServerVariables($wifi)
+                ->postJson('/api/rider/auth/login', ['email' => 'guesser@example.com', 'password' => 'Wrong12345'])
+                ->assertStatus(401);
+        }
+
+        $this->withServerVariables($wifi)
+            ->postJson('/api/rider/auth/login', ['email' => 'guesser@example.com', 'password' => 'Wrong12345'])
+            ->assertStatus(429);
+
+        // Another rider on the same network can still try.
+        $this->withServerVariables($wifi)
+            ->postJson('/api/rider/auth/login', ['email' => 'panelist@example.com', 'password' => 'Wrong12345'])
+            ->assertStatus(401);
+    }
+
+    private function otpTables(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
@@ -380,6 +412,41 @@ class InputRulesTest extends TestCase
             $table->timestamp('expires_at');
             $table->timestamps();
         });
+    }
+
+    public function test_rider_codes_are_saved_hashed_and_the_emailed_code_works(): void
+    {
+        $this->otpTables();
+        Mail::fake();
+
+        User::create([
+            'first_name' => 'Juan', 'last_name' => 'Cruz', 'username' => 'juan',
+            'email' => 'juan@example.com', 'password' => 'Secret123', 'role' => 'rider',
+            'email_verified_at' => now(),
+        ]);
+
+        $service = new RiderAuthService($this->createMock(NotificationService::class));
+        $this->assertTrue($service->sendForgotPasswordOtp('juan@example.com'));
+
+        $emailed = null;
+        Mail::assertSent(RiderPasswordResetMail::class, function (RiderPasswordResetMail $mail) use (&$emailed) {
+            $emailed = $mail->otp;
+
+            return true;
+        });
+
+        $saved = PasswordResetOtp::firstOrFail()->otp;
+        $this->assertNotSame($emailed, $saved, 'the database never holds the real code');
+        $this->assertTrue(Hash::check($emailed, $saved));
+
+        $this->assertIsString($service->verifyForgotPasswordOtp('juan@example.com', $emailed));
+        $this->assertSame(0, PasswordResetOtp::count(), 'a used code is deleted');
+    }
+
+    /** Also covers codes saved in plain text before the hashing change (they still work). */
+    public function test_a_rider_code_is_thrown_away_after_5_wrong_guesses(): void
+    {
+        $this->otpTables();
 
         $user = User::create([
             'first_name' => 'Juan', 'last_name' => 'Cruz', 'username' => 'juan',

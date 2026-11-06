@@ -37,17 +37,31 @@ function ThemedToaster() {
 
 const appName = import.meta.env.VITE_APP_NAME || 'AVISO';
 
-// Listen for Inertia navigation success to trigger flash messages globally
+type FlashProps = { success?: string; error?: string; info?: string } | undefined;
+
+function showFlash(flash: FlashProps) {
+    if (flash?.success) toast.success({ title: flash.success });
+    if (flash?.error) toast.error({ title: flash.error });
+    if (flash?.info) toast.info({ title: flash.info });
+}
+
+// First page load (e.g. "Welcome back" after login): Inertia only reports it
+// through "navigate".
+let firstPageShown = false;
 router.on('navigate', (event) => {
     // Consume any pending session-storage toasts first
     toast.consumePending();
 
-    const page = event.detail.page;
-    const flash = page.props.flash as { success?: string; error?: string; info?: string } | undefined;
-    
-    if (flash?.success) toast.success({ title: flash.success });
-    if (flash?.error) toast.error({ title: flash.error });
-    if (flash?.info) toast.info({ title: flash.info });
+    if (firstPageShown) return;
+    firstPageShown = true;
+    showFlash(event.detail.page.props.flash as FlashProps);
+});
+
+// Every visit after that. "success" also fires when the server sends the admin
+// back to the same page (deactivate, edit, mark all read…), where Inertia
+// replaces the page and skips "navigate", so those messages were never shown.
+router.on('success', (event) => {
+    showFlash(event.detail.page.props.flash as FlashProps);
 });
 
 createInertiaApp({

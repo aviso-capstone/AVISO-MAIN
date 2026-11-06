@@ -91,7 +91,7 @@ class RiderAuthService
         PasswordResetOtp::create([
             'user_id'    => $user->id,
             'email'      => $data['email'],
-            'otp'        => $otp,
+            'otp'        => Hash::make($otp), // only the email has the real code
             'expires_at' => now()->addMinutes(10),
         ]);
 
@@ -161,7 +161,7 @@ class RiderAuthService
         PasswordResetOtp::create([
             'user_id'    => $user->id,
             'email'      => $email,
-            'otp'        => $otp,
+            'otp'        => Hash::make($otp), // only the email has the real code
             'expires_at' => now()->addMinutes(10),
         ]);
 
@@ -189,7 +189,7 @@ class RiderAuthService
         PasswordResetOtp::create([
             'user_id'    => $user->id,
             'email'      => $email,
-            'otp'        => $otp,
+            'otp'        => Hash::make($otp), // only the email has the real code
             'expires_at' => now()->addMinutes(10),
         ]);
 
@@ -256,7 +256,7 @@ class RiderAuthService
             return null;
         }
 
-        if (hash_equals((string) $record->otp, $otp)) {
+        if ($this->otpMatches((string) $record->otp, $otp)) {
             return $record;
         }
 
@@ -273,6 +273,20 @@ class RiderAuthService
         }
 
         return null;
+    }
+
+    /**
+     * Codes are stored hashed, like the admin reset codes. A code saved in
+     * plain text before this change (they last 10 minutes) still works, so
+     * nobody who signed up just before a deploy gets stuck.
+     */
+    private function otpMatches(string $stored, string $typed): bool
+    {
+        if (str_starts_with($stored, '$2y$') || str_starts_with($stored, '$argon')) {
+            return Hash::check($typed, $stored);
+        }
+
+        return hash_equals($stored, $typed);
     }
 
     private function otpAttemptsKey(string $email): string

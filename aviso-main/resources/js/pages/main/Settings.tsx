@@ -45,7 +45,7 @@ export default function Settings() {
         e.preventDefault();
         profileForm.post(route('settings.profile'), {
             preserveScroll: true,
-            onSuccess: () => toast.success('Profile updated successfully'),
+            // The success message comes from the server (flash toast).
             onError: () => toast.error({ title: 'Failed to save profile', description: 'Please check the form for errors.' }),
         });
     };
@@ -61,10 +61,7 @@ export default function Settings() {
         e.preventDefault();
         passwordForm.post(route('settings.password'), {
             preserveScroll: true,
-            onSuccess: () => {
-                passwordForm.reset();
-                toast.success('Password changed successfully');
-            },
+            onSuccess: () => passwordForm.reset(), // message: server flash toast
             onError: () => toast.error({ title: 'Failed to change password', description: 'Check your current password and try again.' }),
         });
     };

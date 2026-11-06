@@ -96,7 +96,7 @@ Route::middleware('web')->group(function () {
     // Admin Authentication Routes
     Route::middleware('guest')->group(function () {
         Route::get('login', [AdminAuthController::class, 'create'])->name('login');
-        Route::post('login', [AdminAuthController::class, 'store'])->middleware('throttle:6,1'); // 6 login attempts per minute
+        Route::post('login', [AdminAuthController::class, 'store'])->middleware('throttle:30,1'); // per network (a shared Wi-Fi); AdminLoginRequest also locks a username after 5 wrong tries
 
         // ── OTP Password Reset Wizard ───────────────────────────────────────
         Route::get('forgot-password', [PasswordResetController::class, 'show'])->name('password.request');
