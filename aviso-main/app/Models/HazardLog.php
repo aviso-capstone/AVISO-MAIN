@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class HazardLog extends Model
 {
@@ -37,6 +38,23 @@ class HazardLog extends Model
     const STATUS_ACTIVE   = 'active';
     const STATUS_RESOLVED = 'resolved';
 
+    // ── Why a hazard was resolved ─────────────────────────────────────────────
+    const REASON_FIXED      = 'fixed';
+    const REASON_NOT_HAZARD = 'not_hazard';
+    const REASON_OTHER      = 'other';
+
+    /**
+     * Saves of one real hazard lie within this many meters of each other (same
+     * type). Resolving a hazard resolves every active save of it in that radius,
+     * so no leftover pin stays on the map. Same values as the mobile app's
+     * known-hazard grouping.
+     */
+    const GROUP_RADIUS_M = [
+        self::TYPE_POTHOLE         => 10,
+        self::TYPE_ROAD_EXCAVATION => 25,
+        self::TYPE_ROAD_BARRIER    => 30,
+    ];
+
     // ── Eloquent config ───────────────────────────────────────────────────────
     // `area` holds the barangay name and `barangay_code` its PSGC code, both
     // resolved from the coordinates by BarangayLocatorService.
@@ -57,6 +75,7 @@ class HazardLog extends Model
         'status',
         'resolved_by',
         'resolved_at',
+        'resolved_reason',
         'detected_at',
     ];
 
@@ -86,6 +105,12 @@ class HazardLog extends Model
     public function resolver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    /** Riders' "hazard no longer there" reports (photo proof). */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(HazardReport::class);
     }
 
     // ── Query scopes ──────────────────────────────────────────────────────────

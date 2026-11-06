@@ -23,7 +23,10 @@ Route::middleware('web')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\Admin\DashboardController::class, 'index'])->name('dashboard');
 
         Route::get('/map', function (\Illuminate\Http\Request $request) {
-            $activeHazards = \App\Models\HazardLog::where('status', 'active')->get();
+            // `pending_reports_count` badges pins a rider reported as no longer there.
+            $activeHazards = \App\Models\HazardLog::active()
+                ->withCount(['reports as pending_reports_count' => fn ($q) => $q->pending()])
+                ->get();
 
             $focusAlert = null;
             if ($request->filled('alert')) {
@@ -45,6 +48,11 @@ Route::middleware('web')->group(function () {
         })->name('map');
         
         Route::get('/hazards', [\App\Http\Controllers\Admin\HazardLogsController::class, 'index'])->name('hazards.index');
+
+        // ── "Hazard no longer there" reports from riders (Live Map panel) ──
+        Route::get('/hazard-reports/pending', [\App\Http\Controllers\Admin\HazardReportController::class, 'pending'])->name('hazard-reports.pending');
+        Route::post('/hazard-reports/{report}/confirm', [\App\Http\Controllers\Admin\HazardReportController::class, 'confirm'])->name('hazard-reports.confirm');
+        Route::post('/hazard-reports/{report}/reject', [\App\Http\Controllers\Admin\HazardReportController::class, 'reject'])->name('hazard-reports.reject');
         Route::get('/crash-logs', [\App\Http\Controllers\Admin\CrashDetectionLogsController::class, 'index'])->name('crash-logs.index');
 
         // Settings

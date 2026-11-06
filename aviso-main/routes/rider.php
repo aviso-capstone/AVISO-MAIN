@@ -5,6 +5,7 @@ use App\Http\Controllers\Rider\AddressController;
 use App\Http\Controllers\Rider\EmergencyContactController;
 use App\Http\Controllers\Rider\EmergencyController;
 use App\Http\Controllers\Rider\HazardLogController;
+use App\Http\Controllers\Rider\HazardReportController;
 use App\Http\Controllers\Rider\IotDeviceController;
 use App\Http\Controllers\Rider\ProfileController;
 use App\Http\Controllers\Rider\RiderAuthController;
@@ -45,6 +46,9 @@ Route::prefix('rider')->group(function () {
 
         // ── All active hazards (community map layer — same data admin sees) ────
         Route::get('/hazards', [HazardLogController::class, 'active']);
+
+        // ── "Hazard no longer there" report (photo proof, admin reviews it) ───
+        Route::post('/hazards/{hazard}/reports', [HazardReportController::class, 'store'])->middleware('throttle:10,1');
 
         // ── Trip tracking ──────────────────────────────────────────────────────
         Route::post('/trips',                    [TripController::class, 'start']);

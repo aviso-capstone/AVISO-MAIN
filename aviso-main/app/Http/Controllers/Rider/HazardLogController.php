@@ -23,7 +23,7 @@ class HazardLogController extends Controller
 
     public function active(): JsonResponse
     {
-        $hazards = $this->hazardLogService->getActiveForMap();
+        $hazards = $this->hazardLogService->getActiveForMap((int) Auth::id());
 
         return response()->json($hazards);
     }
