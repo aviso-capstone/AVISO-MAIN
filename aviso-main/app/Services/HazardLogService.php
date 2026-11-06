@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\HazardLog;
 use App\Models\HazardReport;
 use App\Models\Trip;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -13,12 +15,22 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HazardLogService
 {
-    /** ~2 km in degrees of latitude: the box searched before falling back to all hazards. */
-    private const NEAREST_SEARCH_DEG = 0.018;
+    /** Fields of a map pin (getActiveForMap): the admin Live Map, the rider map and the known-hazard warning. */
+    private const MAP_PIN_FIELDS = [
+        'id', 'haz_code', 'type', 'area', 'barangay_code', 'latitude', 'longitude',
+        'confidence', 'distance', 'gps_accuracy', 'heading', 'travel_heading', 'rider_code',
+        'status', 'detected_at', 'times_seen', 'last_seen_at', 'member_ids',
+        'pending_reports_count', 'reported_by_me',
+    ];
+
+    /** Same-hazard groups per status, built once per request (see groupsFor()). */
+    private array $groupCache = [];
 
     public function __construct(
         private BarangayLocatorService $barangayLocator,
         private TripService $tripService,
+        private HazardPositionService $hazardPosition,
+        private HazardGroupService $hazardGroups,
     )
     {
         //
@@ -68,6 +80,7 @@ class HazardLogService
 
         $page = $query->paginate($perPage)->withQueryString();
         $this->attachNearestSameType($page->getCollection());
+        $this->attachTimesSeen($page->getCollection());
         $this->attachProofPhotos($page->getCollection());
 
         return $page;
@@ -120,6 +133,7 @@ class HazardLogService
 
         $logs = $query->get();
         $this->attachNearestSameType($logs);
+        $this->attachTimesSeen($logs);
 
         return $logs;
     }
@@ -175,6 +189,8 @@ class HazardLogService
 
         $data['status']      = HazardLog::STATUS_ACTIVE;
         $data['detected_at'] = $detectedAt;
+        // The phone sends the rider's position. place() below keeps it in
+        // rider_latitude/rider_longitude and moves latitude/longitude to the hazard.
 
         $data['trip_id'] = $this->resolveTripId($data, $detectedAt);
 
@@ -189,13 +205,29 @@ class HazardLogService
             $data['haz_code'] = $this->generateHazardCode($data['type'], $detectedAt);
 
             try {
-                return HazardLog::create($data);
+                $log = HazardLog::create($data);
+                break;
             } catch (UniqueConstraintViolationException $e) {
                 if ($attempt >= 3) {
                     throw $e;
                 }
             }
         }
+
+        // Moved forward by the camera distance now when the phone sent its
+        // direction (or the ride already ended); otherwise when the ride ends.
+        // Placement never stops a hazard from being saved.
+        try {
+            $this->hazardPosition->place($log);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[HazardLogService] placement failed', [
+                'hazard_log_id' => $log->id,
+                'error'         => $e->getMessage(),
+            ]);
+        }
+        $this->groupCache = [];
+
+        return $log;
     }
 
     /**
@@ -248,10 +280,10 @@ class HazardLogService
     }
 
     /**
-     * Resolve a hazard together with every other active save of it: the same
-     * type within its group radius (pothole 10 m, excavation 25 m, barrier 30 m).
-     * There is one row per save, so without this a fixed pothole saved five times
-     * would leave four pins behind. Rows are only marked resolved, never deleted.
+     * Resolve a hazard together with every other active save of it (the same
+     * hazard by HazardGroupService's rule). There is one row per save, so
+     * without this a fixed pothole saved five times would leave four saves
+     * behind. Rows are only marked resolved, never deleted.
      *
      * @return int[] ids of every hazard log that was resolved
      */
@@ -278,24 +310,40 @@ class HazardLogService
      */
     public function sameHazardIds(HazardLog $hazard): array
     {
-        $radius = HazardLog::GROUP_RADIUS_M[$hazard->type] ?? 10;
-        $lat    = (float) $hazard->latitude;
-        $lng    = (float) $hazard->longitude;
-        // A cheap box first (1 degree of latitude is about 111 km), then the exact distance.
-        $box    = $radius / 111000 * 2;
+        $group = $this->hazardGroups->index($this->groupsFor(HazardLog::STATUS_ACTIVE))[$hazard->id] ?? null;
 
-        $ids = HazardLog::active()
-            ->where('type', $hazard->type)
-            ->whereBetween('latitude', [$lat - $box, $lat + $box])
-            ->whereBetween('longitude', [$lng - $box, $lng + $box])
-            ->get(['id', 'latitude', 'longitude'])
-            ->filter(fn (HazardLog $other) => self::metersBetween(
-                $lat, $lng, (float) $other->latitude, (float) $other->longitude,
-            ) <= $radius)
-            ->pluck('id')
-            ->all();
+        return array_values(array_unique([$hazard->id, ...($group['member_ids'] ?? [])]));
+    }
 
-        return array_values(array_unique([$hazard->id, ...$ids]));
+    /**
+     * Same-hazard groups of every save with this status (HazardGroupService).
+     * Built once per request.
+     */
+    private function groupsFor(string $status): array
+    {
+        // All columns: a fixed list would break for the moments a deploy runs
+        // before its migrations (the web server starts first).
+        return $this->groupCache[$status] ??= $this->hazardGroups->group(
+            HazardLog::where('status', $status)->get(),
+        );
+    }
+
+    /**
+     * Times Seen: how many times (rides) the same hazard was seen on the road,
+     * set as `times_seen`, and when it was last seen (`last_seen_at`).
+     */
+    public function attachTimesSeen(iterable $logs): void
+    {
+        $indexes = [];
+
+        foreach ($logs as $log) {
+            $status = $log->status ?? HazardLog::STATUS_ACTIVE;
+            $indexes[$status] ??= $this->hazardGroups->index($this->groupsFor($status));
+            $group = $indexes[$status][$log->id] ?? null;
+
+            $log->setAttribute('times_seen', $group['times_seen'] ?? 1);
+            $log->setAttribute('last_seen_at', ($group['last_seen_at'] ?? $log->detected_at)?->toISOString());
+        }
     }
 
     public function getRiderLogs(): \Illuminate\Database\Eloquent\Collection
@@ -306,6 +354,7 @@ class HazardLogService
             ->get();
 
         $this->attachNearestSameType($logs);
+        $this->attachTimesSeen($logs);
 
         return $logs;
     }
@@ -314,84 +363,89 @@ class HazardLogService
      * Hazard to Hazard Distance: for each log, the nearest OTHER active hazard
      * of the same type (from any rider), set as `nearest_hazard_code` and
      * `nearest_hazard_distance` (whole meters; both null when there is none).
-     * Same type only: a barrier next to the excavation it guards is one site,
-     * not two hazards close together. Calculated when read, so it stays
-     * current as new hazards arrive.
+     * Other saves of the same hazard are skipped: they are Times Seen, not a
+     * second hazard close by (that would tell the prediction model hazards
+     * always come in tight groups). Same type only: a barrier next to the
+     * excavation it guards is one site, not two hazards close together.
+     * Calculated when read, so it stays current as new hazards arrive.
      */
     public function attachNearestSameType(iterable $logs): void
     {
-        $logs = collect($logs);
-        if ($logs->isEmpty()) {
-            return;
-        }
-
-        $candidates = HazardLog::active()
-            ->whereIn('type', $logs->pluck('type')->unique()->values())
-            ->get(['id', 'haz_code', 'type', 'latitude', 'longitude'])
-            ->groupBy('type');
+        $groups = null;
 
         foreach ($logs as $log) {
-            $sameType = $candidates->get($log->type, collect());
-            $lat = (float) $log->latitude;
-            $lng = (float) $log->longitude;
-
-            // Look nearby first (cheap box check); only scan everything when nothing is close.
-            $nearest = $this->nearestOf($sameType, $log->id, $lat, $lng, self::NEAREST_SEARCH_DEG)
-                ?? $this->nearestOf($sameType, $log->id, $lat, $lng, null);
+            $groups ??= $this->groupsFor(HazardLog::STATUS_ACTIVE);
+            $nearest = $this->hazardGroups->nearestOtherHazard($log, $groups);
 
             $log->setAttribute('nearest_hazard_code', $nearest['code'] ?? null);
             $log->setAttribute('nearest_hazard_distance', isset($nearest) ? (int) round($nearest['meters']) : null);
         }
     }
 
-    /** @return array{code: string, meters: float}|null */
-    private function nearestOf($hazards, int $selfId, float $lat, float $lng, ?float $boxDeg): ?array
-    {
-        $best = null;
-
-        foreach ($hazards as $other) {
-            if ($other->id === $selfId) {
-                continue;
-            }
-
-            $oLat = (float) $other->latitude;
-            $oLng = (float) $other->longitude;
-            if ($boxDeg !== null && (abs($oLat - $lat) > $boxDeg || abs($oLng - $lng) > $boxDeg)) {
-                continue;
-            }
-
-            $meters = self::metersBetween($lat, $lng, $oLat, $oLng);
-            if ($best === null || $meters < $best['meters']) {
-                $best = ['code' => $other->haz_code, 'meters' => $meters];
-            }
-        }
-
-        return $best;
-    }
-
     /** Great-circle (haversine) distance in meters. */
     public static function metersBetween(float $lat1, float $lng1, float $lat2, float $lng2): float
     {
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return 2 * asin(sqrt($a)) * 6371000;
+        return HazardPositionService::metersBetween($lat1, $lng1, $lat2, $lng2);
     }
 
     /**
-     * Active hazards for the rider map and the known-hazard-ahead warning.
-     * `heading` lets the app warn only riders going the same direction;
-     * `reported_by_me` tells the app this rider already sent a "no longer
-     * there" report for it.
+     * Active hazards for the admin Live Map, the rider map and the known-hazard
+     * warning: ONE pin per real hazard (all its saves grouped), placed at the
+     * average position of its saves, with `times_seen`, `last_seen_at` and
+     * `member_ids` (every save). The pin keeps the id and code of the hazard's
+     * first save. `travel_heading` lets the app warn only riders going the same
+     * direction; `pending_reports_count` and (for a rider) `reported_by_me`
+     * cover reports on any save of the hazard.
      */
-    public function getActiveForMap(?int $userId = null): \Illuminate\Database\Eloquent\Collection
+    public function getActiveForMap(?int $userId = null): EloquentCollection
     {
-        return HazardLog::active()
-            ->withCount(['reports as pending_reports_count' => fn ($q) => $q->pending()])
-            ->when($userId, fn ($q) => $q->withExists(['reports as reported_by_me' => fn ($r) => $r->where('user_id', $userId)]))
-            ->orderBy('detected_at', 'desc')
-            ->get(['id', 'haz_code', 'type', 'area', 'barangay_code', 'latitude', 'longitude', 'confidence', 'distance', 'gps_accuracy', 'heading', 'rider_code', 'detected_at']);
+        $groups = $this->groupsFor(HazardLog::STATUS_ACTIVE);
+        $allIds = [];
+        foreach ($groups as $group) {
+            array_push($allIds, ...$group['member_ids']);
+        }
+
+        $pending = $allIds === [] ? collect() : HazardReport::pending()
+            ->whereIn('hazard_log_id', $allIds)
+            ->selectRaw('hazard_log_id, count(*) as aggregate')
+            ->groupBy('hazard_log_id')
+            ->pluck('aggregate', 'hazard_log_id');
+
+        $mine = ($userId && $allIds !== []) ? HazardReport::where('user_id', $userId)
+            ->whereIn('hazard_log_id', $allIds)
+            ->pluck('hazard_log_id')
+            ->flip() : collect();
+
+        $pins = array_map(
+            fn (array $group) => self::mapPin($group, $pending, $userId ? $mine : null),
+            $groups,
+        );
+
+        // Most recently seen first.
+        usort($pins, fn (HazardLog $a, HazardLog $b) => strcmp((string) $b->last_seen_at, (string) $a->last_seen_at));
+
+        return new EloquentCollection($pins);
+    }
+
+    /** One map pin for a hazard group: its first save, at the group's average position. */
+    private static function mapPin(array $group, $pending, $mine): HazardLog
+    {
+        $pin = clone $group['anchor'];
+        $pin->setAttribute('latitude', round($group['latitude'], 7));
+        $pin->setAttribute('longitude', round($group['longitude'], 7));
+        $pin->setAttribute('times_seen', $group['times_seen']);
+        $pin->setAttribute('last_seen_at', $group['last_seen_at']?->toISOString());
+        $pin->setAttribute('member_ids', $group['member_ids']);
+        $pin->setAttribute('pending_reports_count', (int) array_sum(
+            array_map(fn (int $id) => (int) ($pending[$id] ?? 0), $group['member_ids']),
+        ));
+        if ($mine !== null) {
+            $pin->setAttribute('reported_by_me', collect($group['member_ids'])->contains(fn (int $id) => $mine->has($id)));
+        }
+
+        // Only what the maps need: riders receive these pins too, so never the
+        // rider's own GPS point, user or trip of whoever saved it.
+        return $pin->setVisible(self::MAP_PIN_FIELDS);
     }
 
     public function toCsvResponse(array $filters): StreamedResponse
@@ -402,10 +456,12 @@ class HazardLogService
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, [
-                'Code', 'Type', 'Area', 'Latitude', 'Longitude', 'Confidence (%)',
+                'Code', 'Type', 'Area', 'Latitude', 'Longitude', 'Rider Latitude', 'Rider Longitude',
+                'Position Source', 'Confidence (%)',
                 'Camera Hazard Distance (m)', 'Hazard to Hazard Distance (m)', 'Nearest Same-Type Code',
-                'GPS Accuracy (m)', 'Heading (deg)', 'Rider', 'Trip ID', 'Status', 'Detected At (PH time)',
-                'Resolved At (PH time)', 'Resolved Reason',
+                'Times Seen', 'Last Seen (PH time)',
+                'GPS Accuracy (m)', 'Heading (deg)', 'Travel Heading (deg)', 'Rider', 'Trip ID', 'Status',
+                'Detected At (PH time)', 'Resolved At (PH time)', 'Resolved Reason',
             ]);
 
             foreach ($logs as $log) {
@@ -415,12 +471,18 @@ class HazardLogService
                     $log->area,
                     $log->latitude,
                     $log->longitude,
+                    $log->rider_latitude,
+                    $log->rider_longitude,
+                    $log->position_source,
                     $log->confidence,
                     $log->distance,
                     $log->nearest_hazard_distance,
                     $log->nearest_hazard_code,
+                    $log->times_seen,
+                    $log->last_seen_at ? self::localTime(Carbon::parse($log->last_seen_at)) : '',
                     $log->gps_accuracy,
                     $log->heading,
+                    $log->travel_heading,
                     $log->rider_code,
                     $log->trip_id,
                     $log->status,

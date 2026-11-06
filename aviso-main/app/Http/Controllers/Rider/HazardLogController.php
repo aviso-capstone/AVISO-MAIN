@@ -36,6 +36,7 @@ class HazardLogController extends Controller
 
         $log = $this->hazardLogService->processIncomingHazard($data);
         $this->hazardLogService->attachNearestSameType([$log]);
+        $this->hazardLogService->attachTimesSeen([$log]);
 
         return response()->json([
             'success' => true,

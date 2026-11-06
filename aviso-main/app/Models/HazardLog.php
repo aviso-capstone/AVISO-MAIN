@@ -56,8 +56,10 @@ class HazardLog extends Model
     ];
 
     // ── Eloquent config ───────────────────────────────────────────────────────
-    // `area` holds the barangay name and `barangay_code` its PSGC code, both
-    // resolved from the coordinates by BarangayLocatorService.
+    // `latitude`/`longitude` are the hazard's position: the rider's GPS point
+    // (`rider_latitude`/`rider_longitude`) moved forward by the camera distance,
+    // see HazardPositionService. `area` holds the barangay name and
+    // `barangay_code` its PSGC code, both resolved from that position.
     protected $fillable = [
         'haz_code',
         'type',
@@ -65,10 +67,14 @@ class HazardLog extends Model
         'barangay_code',
         'latitude',
         'longitude',
+        'rider_latitude',
+        'rider_longitude',
         'confidence',
         'distance',
         'gps_accuracy',
         'heading',
+        'travel_heading',
+        'position_source',
         'rider_code',
         'user_id',
         'trip_id',
@@ -86,6 +92,9 @@ class HazardLog extends Model
         'distance'    => 'decimal:2',
         'gps_accuracy' => 'decimal:2',
         'heading'     => 'decimal:2',
+        'rider_latitude'  => 'decimal:7',
+        'rider_longitude' => 'decimal:7',
+        'travel_heading'  => 'decimal:2',
         'detected_at' => 'datetime',
         'resolved_at' => 'datetime',
     ];

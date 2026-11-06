@@ -23,10 +23,9 @@ Route::middleware('web')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\Admin\DashboardController::class, 'index'])->name('dashboard');
 
         Route::get('/map', function (\Illuminate\Http\Request $request) {
+            // One pin per real hazard (its saves averaged), with Times Seen.
             // `pending_reports_count` badges pins a rider reported as no longer there.
-            $activeHazards = \App\Models\HazardLog::active()
-                ->withCount(['reports as pending_reports_count' => fn ($q) => $q->pending()])
-                ->get();
+            $activeHazards = app(\App\Services\HazardLogService::class)->getActiveForMap();
 
             $focusAlert = null;
             if ($request->filled('alert')) {

@@ -11,6 +11,10 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class TripService
 {
+    public function __construct(private HazardPositionService $hazardPosition)
+    {
+    }
+
     public function startTrip(array $data): Trip
     {
         // A rider rides one trip at a time: anything still open (app closed mid-ride, lost signal) is
@@ -80,7 +84,7 @@ class TripService
         $distanceKm      = $this->computeDistanceKm($waypoints);
         $durationMinutes = (int) $trip->started_at->diffInMinutes($endedAt);
 
-        return $trip->update([
+        $updated = $trip->update([
             'current_lat'       => $lat,
             'current_lng'       => $lng,
             'end_lat'           => $lat,
@@ -91,6 +95,11 @@ class TripService
             'total_distance_km' => $distanceKm,
             'duration_minutes'  => $durationMinutes,
         ]);
+
+        // The route is complete now: place this ride's hazards that had no GPS direction.
+        $this->hazardPosition->placeTrip($trip);
+
+        return $updated;
     }
 
     public function getActiveTrips(): Collection
@@ -140,6 +149,8 @@ class TripService
                 'total_distance_km' => $this->computeDistanceKm($waypoints),
                 'duration_minutes'  => (int) $trip->started_at->diffInMinutes($endedAt),
             ]);
+
+            $this->hazardPosition->placeTrip($trip);
         }
     }
 

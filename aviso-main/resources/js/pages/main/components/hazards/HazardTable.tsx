@@ -206,6 +206,9 @@ export function HazardTable({
                             <TableHead className="font-semibold whitespace-nowrap">
                                 Hazard to Hazard Distance
                             </TableHead>
+                            <TableHead className="font-semibold whitespace-nowrap">
+                                Times Seen
+                            </TableHead>
                             <TableHead className="font-semibold">
                                 Coordinates
                             </TableHead>
@@ -225,7 +228,7 @@ export function HazardTable({
                         {hazards.data.length === 0 ? (
                             <TableRow>
                                 <TableCell
-                                    colSpan={10}
+                                    colSpan={11}
                                     className="h-32 text-center text-muted-foreground"
                                 >
                                     No hazards found matching your filters.
@@ -270,6 +273,9 @@ export function HazardTable({
                                         {hazard.nearest_hazard_distance != null
                                             ? `${hazard.nearest_hazard_distance} m → ${hazard.nearest_hazard_code}`
                                             : '—'}
+                                    </TableCell>
+                                    <TableCell className="text-sm whitespace-nowrap">
+                                        <TimesSeenCell hazard={hazard} />
                                     </TableCell>
                                     <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
                                         {Number(hazard.latitude).toFixed(5)}, {Number(hazard.longitude).toFixed(5)}
@@ -455,6 +461,28 @@ const RESOLVED_REASON_LABELS: Record<string, string> = {
     not_hazard: "Not a hazard",
     other: "Other",
 };
+
+/** How many times (rides) this hazard was seen on the road, and when it was last seen. */
+function TimesSeenCell({ hazard }: { hazard: HazardLog }) {
+    const times = hazard.times_seen ?? 1;
+
+    return (
+        <div className="flex flex-col gap-0.5">
+            <span className="font-medium">{times === 1 ? "1 time" : `${times} times`}</span>
+            {hazard.last_seen_at && (
+                <span className="text-xs text-muted-foreground">
+                    last{" "}
+                    {new Date(hazard.last_seen_at).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}
+                </span>
+            )}
+        </div>
+    );
+}
 
 /** Active / Resolved, with the reason, who, when and the rider's proof photo. */
 function HazardStatusCell({ hazard }: { hazard: HazardLog }) {

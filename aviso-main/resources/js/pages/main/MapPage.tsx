@@ -127,13 +127,20 @@ export default function MapPage({ hazards: loadedHazards, focusAlert }: MapPageP
     // leaves the map at once, without waiting for a page reload.
     const { reports: hazardReports, resolvedHazardIds, confirmReport, rejectReport } = useHazardReports();
     const hazards = useMemo(
-        () => (resolvedHazardIds.size === 0 ? loadedHazards : loadedHazards.filter(h => !resolvedHazardIds.has(h.id))),
+        () => (resolvedHazardIds.size === 0
+            ? loadedHazards
+            : loadedHazards.filter(h => !(h.member_ids ?? [h.id]).some(id => resolvedHazardIds.has(id)))),
         [loadedHazards, resolvedHazardIds],
     );
-    const reportedHazardIds = useMemo(
-        () => new Set(hazardReports.map(r => r.hazard_log_id)),
-        [hazardReports],
-    );
+    // A pin is one hazard (all its saves); a report on any save marks the pin.
+    const reportedHazardIds = useMemo(() => {
+        const reported = new Set(hazardReports.map(r => r.hazard_log_id));
+        const ids = new Set<number>();
+        for (const h of hazards) {
+            if ((h.member_ids ?? [h.id]).some(id => reported.has(id))) ids.add(h.id);
+        }
+        return ids;
+    }, [hazardReports, hazards]);
 
     // Map theme preset — respects localStorage preference set in Settings
     const [lightPreset, setLightPreset] = useState<'day' | 'night' | 'dusk' | 'dawn'>(

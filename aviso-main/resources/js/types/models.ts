@@ -42,6 +42,18 @@ export interface HazardLog {
     proof_photo_url?: string | null;
     /** Riders' "no longer there" reports waiting for review (Live Map only). */
     pending_reports_count?: number;
+    /** The rider's GPS point when detected; latitude/longitude are the hazard's own position. */
+    rider_latitude?: number | null;
+    rider_longitude?: number | null;
+    /** Direction of travel used to place the hazard (degrees from north). */
+    travel_heading?: number | null;
+    /** How the position was worked out: gps | route | none. */
+    position_source?: 'gps' | 'route' | 'none' | null;
+    /** How many times (rides) this hazard was seen on the road. */
+    times_seen?: number;
+    last_seen_at?: string | null;
+    /** Live Map: ids of every save of this hazard (the pin is their average). */
+    member_ids?: number[];
 }
 
 /** A rider's "hazard no longer there" report, with a photo as proof. */

@@ -88,6 +88,8 @@ export function HazardPins({ hazards = [], theme = 'day', hideStats = false, rep
                     distance: h.distance,
                     riderId: h.rider_code,
                     area: h.area,
+                    timesSeen: h.times_seen ?? 1,
+                    lastSeen: h.last_seen_at ?? h.detected_at,
                     // Real position for the popup — the pin itself may be spread out.
                     lat,
                     lng,
@@ -128,7 +130,7 @@ export function HazardPins({ hazards = [], theme = 'day', hideStats = false, rep
             {clusters.map(cluster => {
                 const [longitude, latitude] = cluster.geometry.coordinates;
                 const properties = cluster.properties as any;
-                const { cluster: isCluster, point_count: pointCount, hazardId, hazardType, timestamp, confidence, distance, riderId, area, lat, lng } = properties;
+                const { cluster: isCluster, point_count: pointCount, hazardId, hazardType, timestamp, confidence, distance, riderId, area, lat, lng, timesSeen, lastSeen } = properties;
 
                 if (isCluster) {
                     return (
@@ -176,7 +178,9 @@ export function HazardPins({ hazards = [], theme = 'day', hideStats = false, rep
                                     <span className="font-bold text-base">{hazardType}</span>
                                 </div>
                                 <div className="space-y-2 text-muted-foreground">
-                                    <p className="flex justify-between"><strong className="text-foreground">Detected:</strong> {new Date(timestamp as string).toLocaleTimeString()}</p>
+                                    <p className="flex justify-between"><strong className="text-foreground">Times seen:</strong> <span className="font-semibold text-foreground">{timesSeen === 1 ? '1 time' : `${timesSeen} times`}</span></p>
+                                    <p className="flex justify-between"><strong className="text-foreground">Last seen:</strong> {new Date(lastSeen as string).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p className="flex justify-between"><strong className="text-foreground">First seen:</strong> {new Date(timestamp as string).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                                     <p className="flex justify-between"><strong className="text-foreground">Address/Area:</strong> {area}</p>
                                     <p className="flex justify-between"><strong className="text-foreground">Coordinates:</strong> <span className="font-mono text-[10px]">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</span></p>
                                     <p className="flex justify-between"><strong className="text-foreground">Confidence:</strong> <span className="text-green-600 font-semibold">{confidence}%</span></p>
