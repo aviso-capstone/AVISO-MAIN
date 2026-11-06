@@ -155,6 +155,20 @@ export function HazardTable({
                         </SelectContent>
                     </Select>
 
+                    <Select
+                        value={filters.status || "all"}
+                        onValueChange={(v) => handleFilterChange("status", v)}
+                    >
+                        <SelectTrigger className="w-[130px] bg-background">
+                            <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Status</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                        </SelectContent>
+                    </Select>
+
                     <DateRangeFilter
                         from={filters.from}
                         to={filters.to}
@@ -201,6 +215,9 @@ export function HazardTable({
                             <TableHead className="font-semibold">
                                 Detected At
                             </TableHead>
+                            <TableHead className="font-semibold">
+                                Status
+                            </TableHead>
 
                         </TableRow>
                     </TableHeader>
@@ -208,7 +225,7 @@ export function HazardTable({
                         {hazards.data.length === 0 ? (
                             <TableRow>
                                 <TableCell
-                                    colSpan={9}
+                                    colSpan={10}
                                     className="h-32 text-center text-muted-foreground"
                                 >
                                     No hazards found matching your filters.
@@ -270,7 +287,9 @@ export function HazardTable({
                                             minute: "2-digit",
                                         })}
                                     </TableCell>
-
+                                    <TableCell className="text-sm whitespace-nowrap">
+                                        <HazardStatusCell hazard={hazard} />
+                                    </TableCell>
                                 </TableRow>
                             ))
                         )}
@@ -426,6 +445,52 @@ function DateRangeFilter({ from, to, onChange }: DateRangeFilterProps) {
                 >
                     <X className="w-4 h-4" />
                 </Button>
+            )}
+        </div>
+    );
+}
+
+const RESOLVED_REASON_LABELS: Record<string, string> = {
+    fixed: "Fixed",
+    not_hazard: "Not a hazard",
+    other: "Other",
+};
+
+/** Active / Resolved, with the reason, who, when and the rider's proof photo. */
+function HazardStatusCell({ hazard }: { hazard: HazardLog }) {
+    if (hazard.status !== "resolved") {
+        return (
+            <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                Active
+            </Badge>
+        );
+    }
+
+    const details = [
+        hazard.resolved_reason ? RESOLVED_REASON_LABELS[hazard.resolved_reason] ?? hazard.resolved_reason : null,
+        hazard.resolved_by_name ? `by ${hazard.resolved_by_name}` : null,
+        hazard.resolved_at
+            ? new Date(hazard.resolved_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+            : null,
+    ].filter(Boolean);
+
+    return (
+        <div className="flex flex-col gap-1">
+            <Badge variant="outline" className="w-fit border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400">
+                Resolved
+            </Badge>
+            {details.length > 0 && (
+                <span className="text-xs text-muted-foreground">{details.join(" · ")}</span>
+            )}
+            {hazard.proof_photo_url && (
+                <a
+                    href={hazard.proof_photo_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                >
+                    View proof photo
+                </a>
             )}
         </div>
     );

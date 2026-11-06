@@ -24,9 +24,13 @@ interface HazardPinsProps {
     theme?: 'day' | 'night' | 'dusk' | 'dawn';
     /** Hide the "Visible on screen" strip, e.g. while an SOS panel needs the space. */
     hideStats?: boolean;
+    /** Hazards a rider reported as no longer there (waiting for review): their pins get a badge. */
+    reportedHazardIds?: ReadonlySet<number>;
 }
 
-export function HazardPins({ hazards = [], theme = 'day', hideStats = false }: HazardPinsProps) {
+const NO_REPORTS: ReadonlySet<number> = new Set();
+
+export function HazardPins({ hazards = [], theme = 'day', hideStats = false, reportedHazardIds = NO_REPORTS }: HazardPinsProps) {
     const { map } = useMap();
     const [bounds, setBounds] = useState<any>(null);
     const [zoom, setZoom] = useState(14);
@@ -150,14 +154,20 @@ export function HazardPins({ hazards = [], theme = 'day', hideStats = false }: H
                 }
 
                 // Render individual hazard marker
+                const isReported = reportedHazardIds.has(hazardId as number);
                 return (
                     <MapMarker key={hazardId} longitude={longitude} latitude={latitude}>
                         <MarkerContent>
-                            <div 
-                                style={{ backgroundColor: getHazardColor(hazardType as any, theme) }} 
-                                className="w-4 h-4 rounded-full border-[3px] border-white shadow-md hover:scale-125 transition-transform"
-                                title={hazardType as string}
-                            />
+                            <div className="relative">
+                                <div
+                                    style={{ backgroundColor: getHazardColor(hazardType as any, theme) }}
+                                    className={`w-4 h-4 rounded-full border-[3px] shadow-md hover:scale-125 transition-transform ${isReported ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-white'}`}
+                                    title={isReported ? `${hazardType} — reported as no longer there` : (hazardType as string)}
+                                />
+                                {isReported && (
+                                    <span className="pointer-events-none absolute -top-1.5 -right-1.5 h-2.5 w-2.5 rounded-full border border-white bg-amber-500" />
+                                )}
+                            </div>
                         </MarkerContent>
                         <MarkerPopup closeButton className="w-64 z-50 rounded-xl overflow-hidden p-0">
                             <div className="p-4 text-sm bg-background">

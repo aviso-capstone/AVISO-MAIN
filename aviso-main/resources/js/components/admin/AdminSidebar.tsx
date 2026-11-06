@@ -30,6 +30,7 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar";
 import { useSosAlerts } from "@/components/sos/SosAlertProvider";
+import { useHazardReports } from "@/components/hazard-reports/HazardReportProvider";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -97,6 +98,9 @@ export default function AdminSidebar() {
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const { alerts } = useSosAlerts();
     const sosCount = alerts.length;
+    // Riders' "hazard no longer there" reports wait on the Live Map.
+    const { reports: hazardReports } = useHazardReports();
+    const hazardReportCount = hazardReports.length;
     const { state, toggleSidebar } = useSidebar();
     const collapsed = state === "collapsed";
 
@@ -173,6 +177,8 @@ export default function AdminSidebar() {
                                 {group.items.map((item) => {
                                     const isActive = item.url !== "#" && url.startsWith(item.url);
                                     const showSosCount = sosCount > 0 && SOS_BADGED_URLS.includes(item.url);
+                                    // An SOS always wins the badge; otherwise the Live Map shows waiting hazard reports.
+                                    const showReportCount = !showSosCount && hazardReportCount > 0 && item.url === "/map";
                                     return (
                                         <SidebarMenuItem key={item.title}>
                                             <SidebarMenuButton
@@ -198,6 +204,19 @@ export default function AdminSidebar() {
                                                     <span
                                                         aria-hidden
                                                         className="pointer-events-none absolute top-0.5 right-0.5 hidden h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 ring-2 ring-sidebar group-data-[collapsible=icon]:block"
+                                                    />
+                                                </>
+                                            ) : showReportCount ? (
+                                                <>
+                                                    <SidebarMenuBadge
+                                                        className="bg-amber-500 text-white font-bold"
+                                                        title={`${hazardReportCount} hazard report(s) waiting for review`}
+                                                    >
+                                                        {hazardReportCount}
+                                                    </SidebarMenuBadge>
+                                                    <span
+                                                        aria-hidden
+                                                        className="pointer-events-none absolute top-0.5 right-0.5 hidden h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-sidebar group-data-[collapsible=icon]:block"
                                                     />
                                                 </>
                                             ) : null}

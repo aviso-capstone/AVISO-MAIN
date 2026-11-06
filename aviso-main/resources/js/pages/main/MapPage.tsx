@@ -14,6 +14,8 @@ import { MapController } from './components/map/MapController';
 import { EmergencyRiders } from './components/map/EmergencyRiders';
 import { EmergencyAlertPanel } from './components/map/EmergencyAlertPanel';
 import { EmergencyHotlinesPanel } from './components/map/EmergencyHotlinesPanel';
+import { HazardReportsPanel } from './components/map/HazardReportsPanel';
+import { useHazardReports } from '@/components/hazard-reports/HazardReportProvider';
 import { getHazardTailwindColors } from '@/lib/hazards';
 import { toast } from '@/lib/toast';
 import { useSosAlerts } from '@/components/sos/SosAlertProvider';
@@ -120,7 +122,19 @@ function RealTimeClock() {
 
 
 
-export default function MapPage({ hazards, focusAlert }: MapPageProps) {
+export default function MapPage({ hazards: loadedHazards, focusAlert }: MapPageProps) {
+    // Riders' "hazard no longer there" reports. A hazard an admin resolves
+    // leaves the map at once, without waiting for a page reload.
+    const { reports: hazardReports, resolvedHazardIds, confirmReport, rejectReport } = useHazardReports();
+    const hazards = useMemo(
+        () => (resolvedHazardIds.size === 0 ? loadedHazards : loadedHazards.filter(h => !resolvedHazardIds.has(h.id))),
+        [loadedHazards, resolvedHazardIds],
+    );
+    const reportedHazardIds = useMemo(
+        () => new Set(hazardReports.map(r => r.hazard_log_id)),
+        [hazardReports],
+    );
+
     // Map theme preset — respects localStorage preference set in Settings
     const [lightPreset, setLightPreset] = useState<'day' | 'night' | 'dusk' | 'dawn'>(
         () => (localStorage.getItem('aviso_map_theme') as 'day' | 'night' | 'dusk' | 'dawn') ?? 'day'
@@ -329,7 +343,13 @@ export default function MapPage({ hazards, focusAlert }: MapPageProps) {
                             setShowBarangays={setShowBarangays}
                         />
                         <BarangayBoundaries visible={showBarangays} hazards={hazards} theme={lightPreset} />
-                        <HazardPins hazards={filteredHazards} theme={lightPreset} hideStats={hideVisibleStats} />
+                        <HazardPins hazards={filteredHazards} theme={lightPreset} hideStats={hideVisibleStats} reportedHazardIds={reportedHazardIds} />
+                        <HazardReportsPanel
+                            reports={hazardReports}
+                            theme={lightPreset}
+                            onConfirm={confirmReport}
+                            onReject={rejectReport}
+                        />
                         <EmergencyRiders
                             theme={lightPreset}
                             hazards={filteredHazards}

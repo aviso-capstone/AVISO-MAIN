@@ -31,8 +31,54 @@ export interface HazardLog {
     nearest_hazard_code?: string | null;
     nearest_hazard_distance?: number | null;
     rider_code: string;
-    status: 'active' | string;
+    status: 'active' | 'resolved' | string;
     detected_at: string;
+    resolved_at?: string | null;
+    /** fixed | not_hazard | other */
+    resolved_reason?: string | null;
+    /** Admin who resolved it (Hazard Logs only). */
+    resolved_by_name?: string | null;
+    /** The rider's confirmed "no longer there" photo (short-lived link, Hazard Logs only). */
+    proof_photo_url?: string | null;
+    /** Riders' "no longer there" reports waiting for review (Live Map only). */
+    pending_reports_count?: number;
+}
+
+/** A rider's "hazard no longer there" report, with a photo as proof. */
+export interface HazardReportPayload {
+    id: number;
+    hazard_log_id: number;
+    status: 'pending' | 'confirmed' | 'rejected';
+    photo_url: string | null;
+    note: string | null;
+    /** Rider's position when reporting (null without a GPS fix). */
+    latitude: number | null;
+    longitude: number | null;
+    /** Rider-to-hazard distance in meters when reporting. */
+    distance_m: number | null;
+    created_at: string;
+    rider_code: string;
+    rider_name: string | null;
+    hazard: {
+        id: number;
+        haz_code: string;
+        type: string;
+        area: string;
+        latitude: number;
+        longitude: number;
+        confidence: number | null;
+        rider_code: string;
+        status: string;
+        detected_at: string;
+    } | null;
+}
+
+/** Broadcast when an admin confirms or rejects a report. */
+export interface HazardReportReviewedPayload {
+    report_id: number;
+    status: 'confirmed' | 'rejected';
+    closed_report_ids: number[];
+    resolved_hazard_ids: number[];
 }
 
 export interface EmergencyAlert {

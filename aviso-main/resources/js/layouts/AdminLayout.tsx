@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { SosAlertProvider } from '@/components/sos/SosAlertProvider';
 import { SosAlertBanner } from '@/components/sos/SosAlertBanner';
+import { HazardReportProvider } from '@/components/hazard-reports/HazardReportProvider';
 import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         // navigation and neither the socket nor the alarm is ever torn down
         // mid-emergency.
         <SosAlertProvider>
+            <HazardReportProvider>
             <TooltipProvider delayDuration={0}>
             <SidebarProvider defaultOpen={sidebarStartsOpen()}>
                 <div className="min-h-screen bg-background flex w-full">
@@ -62,6 +64,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
             </SidebarProvider>
             </TooltipProvider>
+            </HazardReportProvider>
         </SosAlertProvider>
     );
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\EmergencyAlertService;
+use App\Services\HazardReportService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -46,6 +47,11 @@ class HandleInertiaRequests extends Middleware
             // guests or riders, and rider PII never reaches a non-admin response.
             'sos' => fn (): ?array => $request->user()?->role === 'admin'
                 ? ['pending' => app(EmergencyAlertService::class)->getUnresolvedForBroadcast()]
+                : null,
+            // Riders' "hazard no longer there" reports waiting for review, for
+            // the Live Map panel and the sidebar badge. Admin-only, lazy.
+            'hazardReports' => fn (): ?array => $request->user()?->role === 'admin'
+                ? ['pending' => app(HazardReportService::class)->pendingForAdmin()]
                 : null,
         ];
     }
