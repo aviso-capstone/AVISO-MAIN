@@ -26,7 +26,7 @@ const hazardTypesChartConfig = hazardsChartConfig;
 const HAZARD_TYPE_COLORS = Object.values(HAZARD_CHART_COLORS);
 
 const detectionAccuracyChartConfig = {
-    accuracy: { label: 'Accuracy %', color: 'var(--primary)' },
+    accuracy: { label: 'Avg. confidence %', color: 'var(--primary)' },
 } satisfies ChartConfig;
 
 interface DashboardStat {
@@ -170,11 +170,13 @@ export default function Dashboard({
                             </CardContent>
                         </Card>
 
-                        {/* Bar — Detection Accuracy */}
+                        {/* Bar — Average Confidence (not accuracy: accuracy is the model's test-set mAP) */}
                         <Card className="flex-1 border-border/50 shadow-md">
                             <CardHeader>
-                                <CardTitle>Detection Accuracy</CardTitle>
-                                <CardDescription>Model confidence per hazard class (%).</CardDescription>
+                                <CardTitle>Average Confidence</CardTitle>
+                                <CardDescription>
+                                    How sure the model was, on average, about each saved detection (only 60%+ are saved).
+                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={detectionAccuracyChartConfig} className="h-[130px] w-full">

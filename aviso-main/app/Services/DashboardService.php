@@ -58,7 +58,7 @@ class DashboardService
             ];
         })->values()->toArray();
 
-        // 3. Detection Accuracy by Type (Bar)
+        // 3. Average Confidence by Type (Bar). Confidence, not accuracy.
         $accuracyMapping = [
             'Pothole'              => ['name' => 'Pothole',    'key' => 'potholes'],
             'Road Excavation'      => ['name' => 'Excavation', 'key' => 'roadExcavation'],
