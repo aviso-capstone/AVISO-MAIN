@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Rider\AddressController;
+use App\Http\Controllers\Rider\DashboardController;
 use App\Http\Controllers\Rider\EmergencyContactController;
 use App\Http\Controllers\Rider\EmergencyController;
 use App\Http\Controllers\Rider\HazardLogController;
@@ -40,6 +41,9 @@ Route::prefix('rider')->group(function () {
     Route::middleware(RequireRiderRole::class)->group(function () {
 
         Route::post('/auth/logout', [RiderAuthController::class, 'logout']);
+
+        // ── City overview (home screen: active hazards, today, top barangays) ──
+        Route::get('/dashboard', [DashboardController::class, 'overview'])->middleware('throttle:30,1');
 
         // ── Hazard logs ────────────────────────────────────────────────────────
         Route::get('/hazard-logs',  [HazardLogController::class, 'index']);

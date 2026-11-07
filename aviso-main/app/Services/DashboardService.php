@@ -8,26 +8,27 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
-    private const TOP_BARANGAY_LIMIT = 3;
+    private const TOP_BARANGAY_LIMIT = 10;
+
+    /** Days follow Philippine time (the server clock is UTC, 8 hours behind). */
+    private const TIMEZONE = HazardLog::CODE_TIMEZONE;
 
     public function getMetrics(): array
     {
         // 1. Stat Cards
-        $activeHazardsCount = HazardLog::where('status', 'active')->count();
-        $todayDetectionsCount = HazardLog::whereDate('detected_at', Carbon::today())->count();
         $avgConfidence = HazardLog::avg('confidence') ?? 0;
 
         $dashboardStats = [
             [
                 'label' => 'Active Hazards',
-                'value' => number_format($activeHazardsCount),
+                'value' => number_format($this->activeHazardsCount()),
                 'sub' => 'Currently active across the city',
                 'subVariant' => 'destructive',
             ],
             [
                 'label' => 'Total Detections (Today)',
-                'value' => number_format($todayDetectionsCount),
-                'sub' => 'Across all 7 hazard categories',
+                'value' => number_format($this->todayDetectionsCount()),
+                'sub' => 'Across potholes, road excavations and road barriers',
                 'subVariant' => 'muted',
             ],
             [
@@ -42,7 +43,7 @@ class DashboardService
         $hazardTypesDataRaw = HazardLog::select('type', DB::raw('count(*) as value'))
             ->groupBy('type')
             ->get();
-        
+
         $typeMapping = [
             'Pothole'              => 'Potholes',
             'Road Excavation'      => 'Road Excavation',
@@ -59,63 +60,90 @@ class DashboardService
 
         // 3. Detection Accuracy by Type (Bar)
         $accuracyMapping = [
-            'Pothole'              => 'Pothole',
-            'Road Excavation'      => 'Excavation',
-            'Road Barrier'         => 'Barriers',
+            'Pothole'              => ['name' => 'Pothole',    'key' => 'potholes'],
+            'Road Excavation'      => ['name' => 'Excavation', 'key' => 'roadExcavation'],
+            'Road Barrier'         => ['name' => 'Barriers',   'key' => 'roadBarriers'],
         ];
 
         $detectionAccuracyDataRaw = HazardLog::select('type', DB::raw('AVG(confidence) as accuracy'))
             ->groupBy('type')
             ->get();
 
-        $detectionAccuracyData = collect($accuracyMapping)->map(function ($chartName, $dbType) use ($detectionAccuracyDataRaw) {
+        $detectionAccuracyData = collect($accuracyMapping)->map(function ($chart, $dbType) use ($detectionAccuracyDataRaw) {
             $record = $detectionAccuracyDataRaw->firstWhere('type', $dbType);
             return [
-                'name' => $chartName,
+                'name' => $chart['name'],
+                'key' => $chart['key'],
                 'accuracy' => $record ? round($record->accuracy) : 0,
             ];
         })->values()->toArray();
-
-        // 4. Hazards Over Time (7-day Area Chart)
-        $last7Days = collect();
-        for ($i = 6; $i >= 0; $i--) {
-            $last7Days->push(Carbon::today()->subDays($i)->format('Y-m-d'));
-        }
-
-        $hazardsOverTimeRaw = HazardLog::select(
-            DB::raw('DATE(detected_at) as date'),
-            'type',
-            DB::raw('count(*) as count')
-        )
-            ->where('detected_at', '>=', Carbon::today()->subDays(6))
-            ->groupBy('date', 'type')
-            ->get();
-
-        $hazardsOverTimeData = $last7Days->map(function ($date) use ($hazardsOverTimeRaw) {
-            $dayData = $hazardsOverTimeRaw->where('date', $date);
-            return [
-                'day' => Carbon::parse($date)->format('D'),
-                'potholes' => $dayData->where('type', 'Pothole')->sum('count'),
-                'roadExcavation' => $dayData->where('type', 'Road Excavation')->sum('count'),
-                'roadBarriers' => $dayData->where('type', 'Road Barrier')->sum('count'),
-            ];
-        })->toArray();
 
         return [
             'dashboardStats' => $dashboardStats,
             'hazardTypesData' => $hazardTypesData,
             'detectionAccuracyData' => $detectionAccuracyData,
-            'hazardsOverTimeData' => $hazardsOverTimeData,
+            'hazardsOverTimeData' => $this->hazardsOverTime(),
             'topBarangayHazards' => $this->getTopHazardBarangays(),
         ];
     }
 
     /**
+     * City-wide numbers for the rider app home screen. Same counting as the
+     * admin dashboard, so both always show the same numbers.
+     *
+     * @return array{active_hazards: int, today_detections: int, top_barangays: array}
+     */
+    public function getRiderOverview(): array
+    {
+        return [
+            'active_hazards'   => $this->activeHazardsCount(),
+            'today_detections' => $this->todayDetectionsCount(),
+            'top_barangays'    => $this->getTopHazardBarangays(),
+        ];
+    }
+
+    private function activeHazardsCount(): int
+    {
+        return HazardLog::where('status', 'active')->count();
+    }
+
+    private function todayDetectionsCount(): int
+    {
+        return HazardLog::where('detected_at', '>=', Carbon::today(self::TIMEZONE)->utc())->count();
+    }
+
+    /**
+     * 7-day trend, grouped by Philippine day. The rows are grouped in PHP
+     * (a week is a few hundred rows) so a detection at 7 AM Manila time is not
+     * counted on the day before, which DATE() on the UTC column would do.
+     */
+    private function hazardsOverTime(): array
+    {
+        $firstDay = Carbon::today(self::TIMEZONE)->subDays(6);
+
+        $byDay = HazardLog::where('detected_at', '>=', $firstDay->copy()->utc())
+            ->get(['type', 'detected_at'])
+            ->groupBy(fn (HazardLog $log) => $log->detected_at->copy()->setTimezone(self::TIMEZONE)->format('Y-m-d'));
+
+        return collect(range(0, 6))->map(function (int $offset) use ($firstDay, $byDay) {
+            $day = $firstDay->copy()->addDays($offset);
+            $logs = $byDay->get($day->format('Y-m-d'), collect());
+
+            return [
+                'day' => $day->format('D'),
+                'potholes' => $logs->where('type', HazardLog::TYPE_POTHOLE)->count(),
+                'roadExcavation' => $logs->where('type', HazardLog::TYPE_ROAD_EXCAVATION)->count(),
+                'roadBarriers' => $logs->where('type', HazardLog::TYPE_ROAD_BARRIER)->count(),
+            ];
+        })->toArray();
+    }
+
+    /**
      * Top barangays ranked by the number of physical road hazards recorded in
-     * their area. One grouped query, pivoted in PHP — same shape as the 7-day
-     * trend above. Barangays come from hazard_logs.area, which
-     * BarangayLocatorService resolves from the real PSGC boundaries; hazards
-     * outside the city have no barangay_code and are left out.
+     * their area. One grouped query, pivoted in PHP. Barangays come from
+     * hazard_logs.area, which BarangayLocatorService resolves from the real
+     * PSGC boundaries; hazards outside the city have no barangay_code and are
+     * left out.
      *
      * @return array<int, array{area: string, potholes: int, roadBarriers: int, roadExcavation: int, total: int}>
      */

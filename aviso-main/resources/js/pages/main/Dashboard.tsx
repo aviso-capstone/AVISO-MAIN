@@ -10,7 +10,7 @@ import {
     ChartLegend,
     ChartLegendContent,
 } from '@/components/ui/chart';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import { ChartConfig } from '@/components/ui/chart';
 import { TopBarangayHazards } from './components/dashboard/TopBarangayHazards';
 import { type BarangayHazardCount } from '@/types/models';
@@ -43,6 +43,7 @@ interface HazardTypeDatum {
 
 interface AccuracyDatum {
     name: string;
+    key: keyof typeof HAZARD_CHART_COLORS;
     accuracy: number;
 }
 
@@ -177,12 +178,24 @@ export default function Dashboard({
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={detectionAccuracyChartConfig} className="h-[130px] w-full">
-                                    <BarChart data={detectionAccuracyData} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
+                                    <BarChart data={detectionAccuracyData} margin={{ top: 16, right: 4, bottom: 0, left: -28 }}>
                                         <CartesianGrid vertical={false} strokeDasharray="3 3" />
                                         <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={6} tick={{ fontSize: 10 }} />
-                                        <YAxis tickLine={false} axisLine={false} domain={[80, 100]} />
+                                        {/* Starts at 0: with a high floor (it was 80) any class
+                                            averaging below it had no visible bar. */}
+                                        <YAxis tickLine={false} axisLine={false} domain={[0, 100]} ticks={[0, 50, 100]} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="accuracy" fill="var(--color-accuracy)" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="accuracy" radius={[4, 4, 0, 0]}>
+                                            {detectionAccuracyData.map((item) => (
+                                                <Cell key={item.key} fill={HAZARD_CHART_COLORS[item.key]} />
+                                            ))}
+                                            <LabelList
+                                                dataKey="accuracy"
+                                                position="top"
+                                                formatter={(value) => `${value ?? 0}%`}
+                                                className="fill-foreground text-[10px]"
+                                            />
+                                        </Bar>
                                     </BarChart>
                                 </ChartContainer>
                             </CardContent>
