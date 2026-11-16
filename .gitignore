@@ -38,5 +38,8 @@ yarn-error.log*
 /crash-detection-calibration/
 /aviso-progress-report/
 
+# Final defense papers (local only, backed up on Drive)
+/aviso-final-novdefense/
+
 # graphify knowledge graphs (local only)
 graphify-out/
