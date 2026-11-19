@@ -11,6 +11,7 @@ import {
     Sunrise,
     Filter,
     MapPinned,
+    TriangleAlert,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,10 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { type HazardLog } from "@/types/models";
+import { bundledRiskSquares, RISK_MAP_VERSION } from "@/lib/risk-areas";
+
+/** Purple: predicted risk (not a detected hazard); hazard pins use red, orange and yellow. */
+const RISK_FILL = "#8B5CF6";
 
 // Shifted camera center slightly North so the riders load at the bottom of the screen
 const ZAMBOANGA: [number, number] = [122.0739, 6.935];
@@ -51,6 +56,7 @@ export function MapController({
     const [bearing, setBearing] = useState(0);
     const [is3D, setIs3D] = useState(false);
     const [showHeatmap, setShowHeatmap] = useState(false);
+    const [showRiskAreas, setShowRiskAreas] = useState(false);
 
     // 360° Auto-Rotate state
     const [isRotating, setIsRotating] = useState(false);
@@ -127,6 +133,26 @@ export function MapController({
                         30,
                     ],
                     "heatmap-opacity": 0.7,
+                },
+            });
+        }
+
+        // Risk areas: the risk map's high-risk squares (the ones that trigger
+        // "Possible hazard ahead" on the rider app). Hidden by default.
+        if (!map.getSource("risk-areas-source")) {
+            map.addSource("risk-areas-source", {
+                type: "geojson",
+                data: bundledRiskSquares(),
+            });
+            map.addLayer({
+                id: "risk-areas-fill",
+                type: "fill",
+                source: "risk-areas-source",
+                layout: { visibility: "none" },
+                paint: {
+                    "fill-color": RISK_FILL,
+                    "fill-opacity": 0.35,
+                    "fill-outline-color": RISK_FILL,
                 },
             });
         }
@@ -260,6 +286,16 @@ export function MapController({
         );
     }, [showHeatmap, map, isLoaded]);
 
+    // Apply Risk areas visibility
+    useEffect(() => {
+        if (!map || !isLoaded || !map.getLayer("risk-areas-fill")) return;
+        map.setLayoutProperty(
+            "risk-areas-fill",
+            "visibility",
+            showRiskAreas ? "visible" : "none",
+        );
+    }, [showRiskAreas, map, isLoaded]);
+
     // Track camera values for overlay
     useEffect(() => {
         if (!map || !isLoaded) return;
@@ -363,6 +399,23 @@ export function MapController({
                 >
                     <Layers className="mr-1.5 h-4 w-4" />
                     Heatmap
+                </Button>
+
+                {/* Risk areas toggle (team risk map) */}
+                <Button
+                    size="sm"
+                    variant={showRiskAreas ? "default" : "ghost"}
+                    onClick={() => setShowRiskAreas(!showRiskAreas)}
+                    aria-pressed={showRiskAreas}
+                    title="Places where hazards are likely, from the team risk map"
+                    className={
+                        showRiskAreas
+                            ? "bg-violet-500 hover:bg-violet-600 text-white"
+                            : ""
+                    }
+                >
+                    <TriangleAlert className="mr-1.5 h-4 w-4" />
+                    Risk areas
                 </Button>
 
                 {/* Barangay boundaries toggle */}
@@ -504,6 +557,11 @@ export function MapController({
                 {showHeatmap && (
                     <div className="text-orange-500 font-semibold">
                         🔥 Heatmap Active
+                    </div>
+                )}
+                {showRiskAreas && (
+                    <div className="text-violet-500 font-semibold">
+                        ▢ Risk areas: hazards likely (risk map{RISK_MAP_VERSION ? `, ${RISK_MAP_VERSION}` : ""})
                     </div>
                 )}
             </div>
