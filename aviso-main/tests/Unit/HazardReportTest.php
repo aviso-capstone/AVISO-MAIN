@@ -49,7 +49,7 @@ class HazardReportTest extends TestCase
     public function test_large_photos_and_long_notes_are_rejected(): void
     {
         $errors = $this->errorsFor([
-            'photo' => UploadedFile::fake()->image('spot.jpg')->size(3000),
+            'photo' => UploadedFile::fake()->image('spot.jpg')->size(11000),
             'note'  => str_repeat('a', 201),
         ]);
 

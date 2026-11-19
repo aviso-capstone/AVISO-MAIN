@@ -15,7 +15,7 @@ class StoreHazardReportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'photo'     => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'photo'     => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'latitude'  => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
             'note'      => ['nullable', 'string', 'max:200'],
@@ -26,7 +26,7 @@ class StoreHazardReportRequest extends FormRequest
     {
         return [
             'photo.required' => 'Please take a photo of the spot.',
-            'photo.max'      => 'The photo is too large (2 MB maximum).',
+            'photo.max'      => 'The photo is too large (10 MB maximum).',
         ];
     }
 }
