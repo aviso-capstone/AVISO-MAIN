@@ -1,4 +1,5 @@
 import predictionFile from '@/data/aviso_prediction.json';
+import roadCellsFile from '@/data/aviso_risk_road_cells.json';
 
 /**
  * "Risk areas" layer on the Live Map: the team's risk map (same file as the
@@ -21,8 +22,30 @@ function isCell(c: unknown): c is RiskCell {
     return [lat, lon, risk].every((v) => typeof v === 'number' && Number.isFinite(v));
 }
 
-/** The high-risk squares as polygons, same rule as the rider app (top flag_top_pct of the scores). */
-export function riskSquares(model: PredictionModel): RiskSquares {
+type RoadCellsFile = { model_version?: string; cells?: unknown[] };
+
+const cellKey = (lat: number, lon: number) => `${lat.toFixed(6)},${lon.toFixed(6)}`;
+
+/**
+ * The squares on the road (data/aviso_risk_road_cells.json: squares a recorded
+ * ride path or a saved hazard passes through), or null to keep every square when
+ * the list was built for another risk-map version.
+ */
+function roadCellKeys(roadFile: RoadCellsFile, modelVersion: string | undefined): Set<string> | null {
+    if (!Array.isArray(roadFile.cells) || roadFile.model_version !== modelVersion) return null;
+    return new Set(
+        roadFile.cells
+            .filter((c): c is [number, number] => Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number')
+            .map(([lat, lon]) => cellKey(lat, lon)),
+    );
+}
+
+/**
+ * The high-risk squares on the road as polygons, same rule as the rider app (top
+ * flag_top_pct of the scores). The risk map's spread into buildings and water is
+ * not drawn: no rider can be there and those squares never warn.
+ */
+export function riskSquares(model: PredictionModel, roadFile: RoadCellsFile = {}): RiskSquares {
     const cells = Array.isArray(model.cells) ? model.cells.filter(isCell) : [];
     if (cells.length === 0) return { type: 'FeatureCollection', features: [] };
 
@@ -31,11 +54,12 @@ export function riskSquares(model: PredictionModel): RiskSquares {
     const sorted = [...cells].sort((a, b) => b.risk - a.risk);
     const count = Math.max(1, Math.floor((sorted.length * pct) / 100));
     const cutoff = sorted[count - 1].risk;
+    const road = roadCellKeys(roadFile, model.version);
 
     return {
         type: 'FeatureCollection',
         features: cells
-            .filter((c) => c.risk >= cutoff)
+            .filter((c) => c.risk >= cutoff && (road === null || road.has(cellKey(c.lat, c.lon))))
             .map((c) => {
                 const dLat = half / METERS_PER_DEGREE_LAT;
                 const dLon = half / (METERS_PER_DEGREE_LAT * Math.cos((c.lat * Math.PI) / 180));
@@ -51,9 +75,9 @@ export function riskSquares(model: PredictionModel): RiskSquares {
 
 let cached: RiskSquares | null = null;
 
-/** The bundled risk map's high-risk squares, built once. */
+/** The bundled risk map's high-risk squares on the road, built once. */
 export function bundledRiskSquares(): RiskSquares {
-    if (cached === null) cached = riskSquares(predictionFile as PredictionModel);
+    if (cached === null) cached = riskSquares(predictionFile as PredictionModel, roadCellsFile as RoadCellsFile);
     return cached;
 }
 

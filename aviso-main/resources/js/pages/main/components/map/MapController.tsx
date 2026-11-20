@@ -22,10 +22,14 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { type HazardLog } from "@/types/models";
+import { getHazardColor } from "@/lib/hazards";
 import { bundledRiskSquares, RISK_MAP_VERSION } from "@/lib/risk-areas";
 
 /** Purple: predicted risk (not a detected hazard); hazard pins use red, orange and yellow. */
 const RISK_FILL = "#8B5CF6";
+
+/** Pin colors for the legend (day palette, as the hazard pins). */
+const DETECTED_COLORS = ["Pothole", "Road Excavation", "Road Barrier"].map((type) => getHazardColor(type));
 
 // Shifted camera center slightly North so the riders load at the bottom of the screen
 const ZAMBOANGA: [number, number] = [122.0739, 6.935];
@@ -560,8 +564,28 @@ export function MapController({
                     </div>
                 )}
                 {showRiskAreas && (
-                    <div className="text-violet-500 font-semibold">
-                        ▢ Risk areas: hazards likely (risk map{RISK_MAP_VERSION ? `, ${RISK_MAP_VERSION}` : ""})
+                    <div className="mt-1.5 flex flex-col gap-1 border-t pt-1.5 font-sans">
+                        <div className="flex items-center gap-2">
+                            <span className="h-3 w-5 rounded-sm bg-violet-500/70" />
+                            <span className="font-semibold text-violet-600 dark:text-violet-400">
+                                Possible hazard area (past hazard records)
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="flex w-5 justify-between">
+                                {DETECTED_COLORS.map((color) => (
+                                    <span key={color} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                                ))}
+                            </span>
+                            <span>Detected hazard (pothole · excavation · barrier)</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                            <span className="h-3 w-5 rounded-sm border border-muted-foreground" />
+                            <span>No color: lower risk or not yet surveyed</span>
+                        </div>
+                        {RISK_MAP_VERSION && (
+                            <div className="text-muted-foreground">Risk map {RISK_MAP_VERSION}</div>
+                        )}
                     </div>
                 )}
             </div>
